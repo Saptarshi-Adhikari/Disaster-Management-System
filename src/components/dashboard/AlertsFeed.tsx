@@ -3,9 +3,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
+type AlertType = "critical" | "warning" | "info" | "resolved";
+
 interface Alert {
   id: string;
-  type: "critical" | "warning" | "info" | "resolved";
+  type: AlertType;
   title: string;
   message: string;
   time: string;
@@ -19,7 +21,7 @@ const alerts: Alert[] = [
     title: "Flash Flood Warning",
     message: "Immediate evacuation required for Zone A residents",
     time: "2 min ago",
-    location: "Downtown District"
+    location: "Downtown District",
   },
   {
     id: "2",
@@ -27,7 +29,7 @@ const alerts: Alert[] = [
     title: "Power Outage",
     message: "Grid failure affecting 5,000+ homes in the northern sector",
     time: "15 min ago",
-    location: "North Sector"
+    location: "North Sector",
   },
   {
     id: "3",
@@ -35,7 +37,7 @@ const alerts: Alert[] = [
     title: "Shelter Opening",
     message: "Central Community Center now accepting evacuees",
     time: "32 min ago",
-    location: "Central Area"
+    location: "Central Area",
   },
   {
     id: "4",
@@ -43,34 +45,42 @@ const alerts: Alert[] = [
     title: "Road Cleared",
     message: "Highway 101 debris removed, traffic flowing normally",
     time: "1 hour ago",
-    location: "Highway 101"
+    location: "Highway 101",
   },
 ];
 
-const alertConfig = {
+const alertConfig: Record<
+  AlertType,
+  {
+    icon: typeof AlertTriangle;
+    color: string;
+    bg: string;
+    badge: "destructive" | "outline" | "secondary";
+  }
+> = {
   critical: {
     icon: AlertTriangle,
     color: "text-destructive",
     bg: "bg-destructive/10",
-    badge: "destructive" as const,
+    badge: "destructive",
   },
   warning: {
     icon: AlertTriangle,
     color: "text-warning",
     bg: "bg-warning/10",
-    badge: "outline" as const,
+    badge: "outline",
   },
   info: {
     icon: Info,
     color: "text-info",
     bg: "bg-info/10",
-    badge: "secondary" as const,
+    badge: "secondary",
   },
   resolved: {
     icon: CheckCircle,
     color: "text-success",
     bg: "bg-success/10",
-    badge: "outline" as const,
+    badge: "outline",
   },
 };
 
@@ -82,44 +92,46 @@ export function AlertsFeed() {
           <AlertTriangle className="h-5 w-5 text-warning" />
           Live Alerts
         </CardTitle>
+
         <Badge variant="outline" className="gap-1">
-          <span className="w-2 h-2 bg-destructive rounded-full animate-pulse" />
+          <span className="h-2 w-2 rounded-full bg-destructive animate-pulse" />
           Live
         </Badge>
       </CardHeader>
 
-      <CardContent className="space-y-4 max-h-[400px] overflow-y-auto">
-        {alerts.map((alert) => {
-          const config = alertConfig[alert.type];
-          const Icon = config.icon;
+      <CardContent className="max-h-[400px] space-y-4 overflow-y-auto">
+        {alerts.map(({ id, type, title, message, time, location }) => {
+          const { icon: Icon, color, bg, badge } = alertConfig[type];
 
           return (
             <div
-              key={alert.id}
+              key={id}
               className={cn(
-                "p-4 rounded-lg border border-border/50 transition-all hover:border-border",
-                config.bg
+                "rounded-lg border border-border/50 p-4 transition-all hover:border-border",
+                bg
               )}
             >
               <div className="flex items-start gap-3">
-                <div className={cn("p-2 rounded-lg", config.bg)}>
-                  <Icon className={cn("h-4 w-4", config.color)} />
+                <div className={cn("rounded-lg p-2", bg)}>
+                  <Icon className={cn("h-4 w-4", color)} />
                 </div>
 
-                <div className="flex-1 min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center justify-between gap-2">
-                    <h4 className="font-semibold text-sm truncate">{alert.title}</h4>
-                    <Badge variant={config.badge} className="text-xs capitalize shrink-0">
-                      {alert.type}
+                    <h4 className="truncate text-sm font-semibold">{title}</h4>
+                    <Badge variant={badge} className="shrink-0 text-xs capitalize">
+                      {type}
                     </Badge>
                   </div>
-                  <p className="text-sm text-muted-foreground mt-1">{alert.message}</p>
-                  <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground">
+
+                  <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+
+                  <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
                     <span className="flex items-center gap-1">
                       <Clock className="h-3 w-3" />
-                      {alert.time}
+                      {time}
                     </span>
-                    {alert.location && <span className="truncate">{alert.location}</span>}
+                    {location && <span className="truncate">{location}</span>}
                   </div>
                 </div>
               </div>

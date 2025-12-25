@@ -1,281 +1,341 @@
-import { useState } from "react";
-import { 
-  Users, 
-  Search, 
-  Plus, 
-  Clock, 
-  MapPin, 
+import { useEffect, useState } from "react";
+import { formatDistanceToNow } from "date-fns";
+import {
+  Users,
+  Search,
+  Plus,
+  Clock,
+  MapPin,
   Phone,
-  Eye,
   CheckCircle,
-  AlertTriangle
+  AlertTriangle,
+  Trash2,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Avatar, AvatarFallback } from "@/components/ui/avatar";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+
+type Status = "missing" | "found" | "searching";
 
 interface Person {
   id: string;
   name: string;
   age: number;
   gender: string;
-  lastSeen: string;
+  lastSeen: Date;
   lastLocation: string;
+  district: string;
   description: string;
-  status: "missing" | "found" | "searching";
-  reportedAt: string;
+  status: Status;
+  reportedAt: Date;
   contact: string;
 }
 
-const missingPersons: Person[] = [
+const STORAGE_KEY = "wb-missing-persons-data";
+
+const initialMissingPersons: Person[] = [
   {
     id: "1",
-    name: "Maria Santos",
-    age: 45,
-    gender: "Female",
-    lastSeen: "2 hours ago",
-    lastLocation: "Downtown Shopping Center",
-    description: "5'4\", brown hair, wearing blue jacket and jeans",
+    name: "Anirban Chatterjee",
+    age: 34,
+    gender: "Male",
+    lastSeen: new Date(Date.now() - 4 * 60 * 60 * 1000),
+    lastLocation: "Sealdah Station, Platform 9",
+    district: "Kolkata",
+    description: `5'8", wheatish complexion, wearing a white kurta.`,
     status: "missing",
-    reportedAt: "1 hour ago",
-    contact: "(555) 111-2222"
+    reportedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
+    contact: "033-2214-XXXX",
   },
   {
     id: "2",
-    name: "James Wilson",
-    age: 72,
-    gender: "Male",
-    lastSeen: "5 hours ago",
-    lastLocation: "Riverside Park",
-    description: "6'0\", gray hair, uses walking cane, red sweater",
+    name: "Sumitra Devi",
+    age: 68,
+    gender: "Female",
+    lastSeen: new Date(Date.now() - 24 * 60 * 60 * 1000),
+    lastLocation: "Mall Road, Near Clock Tower",
+    district: "Darjeeling",
+    description: `5'2", gray hair bun, wearing a red shawl.`,
     status: "searching",
-    reportedAt: "3 hours ago",
-    contact: "(555) 333-4444"
+    reportedAt: new Date(Date.now() - 10 * 60 * 60 * 1000),
+    contact: "0354-225-XXXX",
   },
   {
     id: "3",
-    name: "Emily Chen",
-    age: 8,
-    gender: "Female",
-    lastSeen: "1 hour ago",
-    lastLocation: "Central Elementary School",
-    description: "4'2\", black hair in pigtails, pink backpack",
-    status: "found",
-    reportedAt: "45 minutes ago",
-    contact: "(555) 555-6666"
-  },
-  {
-    id: "4",
-    name: "Robert Thompson",
-    age: 35,
+    name: "Rahul Mondal",
+    age: 12,
     gender: "Male",
-    lastSeen: "8 hours ago",
-    lastLocation: "Highway 101 Rest Area",
-    description: "5'10\", bald, tattoo on left arm, driving white sedan",
-    status: "missing",
-    reportedAt: "6 hours ago",
-    contact: "(555) 777-8888"
+    lastSeen: new Date(Date.now() - 2 * 60 * 60 * 1000),
+    lastLocation: "Canning Ferry Ghat",
+    district: "South 24 Parganas",
+    description:
+      "4'5\", short black hair, blue school uniform, yellow backpack.",
+    status: "found",
+    reportedAt: new Date(Date.now() - 60 * 60 * 1000),
+    contact: "03210-225-XXXX",
   },
 ];
 
-const statusConfig = {
-  missing: { label: "Missing", color: "bg-destructive text-destructive-foreground", icon: AlertTriangle },
-  searching: { label: "Active Search", color: "bg-warning text-warning-foreground", icon: Search },
-  found: { label: "Found Safe", color: "bg-success text-success-foreground", icon: CheckCircle },
+const statusConfig: Record<
+  Status,
+  { label: string; color: string; icon: any }
+> = {
+  missing: {
+    label: "Missing",
+    color: "bg-rose-500/10 text-rose-600 border-rose-200",
+    icon: AlertTriangle,
+  },
+  searching: {
+    label: "Active Search",
+    color: "bg-amber-500/10 text-amber-600 border-amber-200",
+    icon: Search,
+  },
+  found: {
+    label: "Found Safe",
+    color: "bg-emerald-500/10 text-emerald-600 border-emerald-200",
+    icon: CheckCircle,
+  },
 };
 
 export default function MissingPersons() {
-  const [searchQuery, setSearchQuery] = useState("");
-  const [isReportOpen, setIsReportOpen] = useState(false);
   const { toast } = useToast();
+  const [search, setSearch] = useState("");
+  const [open, setOpen] = useState(false);
 
-  const filteredPersons = missingPersons.filter(person =>
-    person.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-    person.lastLocation.toLowerCase().includes(searchQuery.toLowerCase())
+  const [persons, setPersons] = useState<Person[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return initialMissingPersons;
+
+    try {
+      return JSON.parse(saved).map((p: any) => ({
+        ...p,
+        lastSeen: new Date(p.lastSeen),
+        reportedAt: new Date(p.reportedAt),
+      }));
+    } catch {
+      return initialMissingPersons;
+    }
+  });
+
+  const [form, setForm] = useState({
+    name: "",
+    age: "",
+    district: "",
+    lastLocation: "",
+    description: "",
+    contact: "",
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(persons));
+  }, [persons]);
+
+  const reportPerson = () => {
+    if (!form.name || !form.contact) return;
+
+    setPersons((p) => [
+      {
+        id: Date.now().toString(),
+        name: form.name,
+        age: Number(form.age),
+        gender: "Not Specified",
+        lastSeen: new Date(),
+        lastLocation: form.lastLocation,
+        district: form.district,
+        description: form.description,
+        status: "missing",
+        reportedAt: new Date(),
+        contact: form.contact,
+      },
+      ...p,
+    ]);
+
+    setForm({
+      name: "",
+      age: "",
+      district: "",
+      lastLocation: "",
+      description: "",
+      contact: "",
+    });
+    setOpen(false);
+    toast({ title: "Report Saved Locally" });
+  };
+
+  const updateStatus = (id: string, status: Status) =>
+    setPersons((p) =>
+      p.map((x) => (x.id === id ? { ...x, status } : x))
+    );
+
+  const deletePerson = (id: string) => {
+    setPersons((p) => p.filter((x) => x.id !== id));
+    toast({ title: "Entry Deleted", variant: "destructive" });
+  };
+
+  const filtered = persons.filter(
+    (p) =>
+      p.name.toLowerCase().includes(search.toLowerCase()) ||
+      p.district.toLowerCase().includes(search.toLowerCase())
   );
 
-  const handleReport = () => {
-    setIsReportOpen(false);
-    toast({
-      title: "Report Submitted",
-      description: "Your missing person report has been submitted to authorities.",
-    });
-  };
-
-  const handleSighting = (name: string) => {
-    toast({
-      title: "Sighting Reported",
-      description: `Thank you for reporting a sighting of ${name}. Authorities have been notified.`,
-    });
-  };
-
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-            <Users className="h-8 w-8 text-primary" />
-            Missing Persons Board
-          </h1>
-          <p className="text-muted-foreground mt-1">
-            Help reunite families - report sightings or missing persons
-          </p>
-        </div>
-        <Dialog open={isReportOpen} onOpenChange={setIsReportOpen}>
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
+        <h1 className="flex items-center gap-2 text-2xl font-bold">
+          <Users className="h-8 w-8 text-primary" />
+          WB Missing Persons
+        </h1>
+
+        <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button variant="emergency" size="lg">
+            <Button size="lg" className="gap-2 bg-rose-600 text-white">
               <Plus className="h-5 w-5" />
-              Report Missing Person
+              Report Missing
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+
+          <DialogContent>
             <DialogHeader>
-              <DialogTitle>Report Missing Person</DialogTitle>
+              <DialogTitle>File New Report</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 mt-4">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="name">Full Name</Label>
-                  <Input id="name" placeholder="Enter name" className="mt-1.5" />
-                </div>
-                <div>
-                  <Label htmlFor="age">Age</Label>
-                  <Input id="age" type="number" placeholder="Age" className="mt-1.5" />
-                </div>
-              </div>
-              <div>
-                <Label htmlFor="lastSeen">Last Seen Location</Label>
-                <Input id="lastSeen" placeholder="Where were they last seen?" className="mt-1.5" />
-              </div>
-              <div>
-                <Label htmlFor="description">Physical Description</Label>
-                <Textarea 
-                  id="description" 
-                  placeholder="Height, clothing, distinguishing features..."
-                  className="mt-1.5"
+
+            <div className="mt-2 space-y-3">
+              {[
+                ["Full Name", "name"],
+                ["Age", "age"],
+                ["District", "district"],
+                ["Last Location", "lastLocation"],
+                ["Your Phone Number", "contact"],
+              ].map(([label, key]) => (
+                <Input
+                  key={key}
+                  placeholder={label}
+                  value={(form as any)[key]}
+                  onChange={(e) =>
+                    setForm({ ...form, [key]: e.target.value })
+                  }
                 />
-              </div>
-              <div>
-                <Label htmlFor="contact">Your Contact Number</Label>
-                <Input id="contact" type="tel" placeholder="+1 (555) 000-0000" className="mt-1.5" />
-              </div>
-              <Button className="w-full" onClick={handleReport}>
-                Submit Report
+              ))}
+
+              <Textarea
+                placeholder="Identification Marks"
+                value={form.description}
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
+              />
+
+              <Button className="w-full bg-rose-600" onClick={reportPerson}>
+                Save Report
               </Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card variant="emergency">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{missingPersons.filter(p => p.status === "missing").length}</p>
-            <p className="text-sm text-muted-foreground">Currently Missing</p>
-          </CardContent>
-        </Card>
-        <Card variant="warning">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{missingPersons.filter(p => p.status === "searching").length}</p>
-            <p className="text-sm text-muted-foreground">Active Searches</p>
-          </CardContent>
-        </Card>
-        <Card variant="safe">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{missingPersons.filter(p => p.status === "found").length}</p>
-            <p className="text-sm text-muted-foreground">Found Today</p>
-          </CardContent>
-        </Card>
+      {/* Search */}
+      <div className="relative">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+        <Input
+          placeholder="Search name or district..."
+          className="pl-10"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
       </div>
 
-      {/* Search */}
-      <Card variant="glass">
-        <CardContent className="p-4">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <Input 
-              placeholder="Search by name or last known location..."
-              className="pl-10"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-            />
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Person Cards */}
+      {/* Cards */}
       <div className="grid gap-4 md:grid-cols-2">
-        {filteredPersons.map((person) => {
-          const config = statusConfig[person.status];
-          const StatusIcon = config.icon;
-          
+        {filtered.map((p) => {
+          const { icon: Icon, label, color } = statusConfig[p.status];
+
           return (
-            <Card 
-              key={person.id}
-              variant={person.status === "missing" ? "emergency" : person.status === "found" ? "safe" : "warning"}
+            <Card
+              key={p.id}
+              className={cn(
+                "border-l-4 shadow-sm",
+                p.status === "missing"
+                  ? "border-l-rose-500"
+                  : p.status === "found"
+                  ? "border-l-emerald-500"
+                  : "border-l-amber-500"
+              )}
             >
-              <CardContent className="p-6">
-                <div className="flex gap-4">
-                  <Avatar className="h-20 w-20 border-2 border-border">
-                    <AvatarFallback className="text-xl font-bold bg-secondary">
-                      {person.name.split(' ').map(n => n[0]).join('')}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-start justify-between gap-2">
-                      <div>
-                        <h3 className="font-bold text-lg">{person.name}</h3>
-                        <p className="text-sm text-muted-foreground">
-                          {person.age} years old • {person.gender}
-                        </p>
-                      </div>
-                      <Badge className={config.color}>
-                        <StatusIcon className="h-3 w-3 mr-1" />
-                        {config.label}
-                      </Badge>
-                    </div>
-                    
-                    <div className="mt-3 space-y-2 text-sm">
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <Clock className="h-4 w-4 shrink-0" />
-                        <span>Last seen {person.lastSeen}</span>
-                      </div>
-                      <div className="flex items-center gap-2 text-muted-foreground">
-                        <MapPin className="h-4 w-4 shrink-0" />
-                        <span className="truncate">{person.lastLocation}</span>
-                      </div>
-                    </div>
-                    
-                    <p className="mt-3 text-sm text-muted-foreground line-clamp-2">
-                      {person.description}
+              <CardContent className="p-5">
+                <div className="mb-4 flex justify-between">
+                  <div>
+                    <h3 className="text-lg font-bold">{p.name}</h3>
+                    <p className="text-xs text-muted-foreground">
+                      {p.age}y • {p.district}
                     </p>
-                    
-                    <div className="flex gap-2 mt-4">
-                      {person.status !== "found" && (
-                        <Button 
-                          variant="default" 
-                          size="sm" 
-                          className="flex-1"
-                          onClick={() => handleSighting(person.name)}
-                        >
-                          <Eye className="h-4 w-4" />
-                          Report Sighting
-                        </Button>
-                      )}
-                      <Button variant="outline" size="sm">
-                        <Phone className="h-4 w-4" />
-                        Contact
-                      </Button>
-                    </div>
                   </div>
+
+                  <Badge variant="outline" className={color}>
+                    <Icon className="mr-1 h-3 w-3" />
+                    {label}
+                  </Badge>
+                </div>
+
+                <div className="space-y-1.5 text-sm text-muted-foreground">
+                  <div className="flex gap-2">
+                    <Clock className="h-3.5 w-3.5 text-primary" />
+                    Last seen{" "}
+                    {formatDistanceToNow(p.lastSeen, { addSuffix: true })}
+                  </div>
+                  <div className="flex gap-2">
+                    <MapPin className="h-3.5 w-3.5 text-primary" />
+                    {p.lastLocation}
+                  </div>
+                </div>
+
+                <p className="mt-3 line-clamp-2 rounded bg-muted p-2 text-sm italic">
+                  "{p.description}"
+                </p>
+
+                <div className="mt-4 flex gap-2">
+                  <Button size="sm" className="flex-1" asChild>
+                    <a href={`tel:${p.contact}`}>
+                      <Phone className="mr-2 h-4 w-4" />
+                      Contact
+                    </a>
+                  </Button>
+
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => deletePerson(p.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+
+                <div className="mt-3 flex gap-1.5">
+                  {(["missing", "searching", "found"] as Status[]).map(
+                    (s) => (
+                      <Button
+                        key={s}
+                        size="sm"
+                        variant="outline"
+                        className="flex-1 text-[10px]"
+                        onClick={() => updateStatus(p.id, s)}
+                      >
+                        {s}
+                      </Button>
+                    )
+                  )}
                 </div>
               </CardContent>
             </Card>

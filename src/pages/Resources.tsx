@@ -1,216 +1,281 @@
-import { useState } from "react";
-import { 
-  Heart, 
-  Package, 
-  Users, 
-  Search, 
+import { useEffect, useState } from "react";
+import {
+  Heart,
+  Search,
   Plus,
   MapPin,
-  Clock,
-  ArrowRight,
-  Check
+  Phone,
+  Check,
+  Trash2,
+  RotateCcw,
+  AlertCircle,
 } from "lucide-react";
+
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
+import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
+import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+  DialogFooter,
+} from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
+
+type ResourceType = "offer" | "request";
+type ResourceStatus = "available" | "pending" | "matched";
 
 interface Resource {
   id: string;
-  type: "offer" | "request";
+  type: ResourceType;
   category: string;
   title: string;
   description: string;
   quantity: string;
   location: string;
   postedBy: string;
-  postedAt: string;
-  status: "available" | "pending" | "matched";
+  contact: string;
+  postedAt: Date;
+  status: ResourceStatus;
   urgent?: boolean;
 }
 
-const resources: Resource[] = [
+const STORAGE_KEY = "wb-resources-data";
+
+const categories = [
+  "All",
+  "Water",
+  "Food",
+  "Medical",
+  "Shelter",
+  "Clothing",
+  "Transportation",
+  "Other",
+];
+
+const initialResources: Resource[] = [
   {
     id: "1",
     type: "offer",
     category: "Water",
     title: "Bottled Water - 50 Cases",
-    description: "Clean drinking water, 24 bottles per case. Can deliver within 10 mile radius.",
+    description: "Clean drinking water. Delivery available.",
     quantity: "50 cases",
-    location: "Downtown Warehouse",
+    location: "Salt Lake City",
     postedBy: "Local Grocery Store",
-    postedAt: "30 min ago",
-    status: "available"
+    contact: "7029786817",
+    postedAt: new Date(Date.now() - 30 * 60000),
+    status: "available",
   },
   {
     id: "2",
     type: "request",
     category: "Medical",
     title: "Insulin Needed Urgently",
-    description: "Type 1 diabetic needs insulin supply. Current supply running out in 24 hours.",
-    quantity: "1 month supply",
+    description: "Supply running out in 24 hours.",
+    quantity: "1 month",
     location: "North District",
     postedBy: "Sarah M.",
-    postedAt: "1 hour ago",
+    contact: "7029786817",
+    postedAt: new Date(Date.now() - 60 * 60000),
     status: "pending",
-    urgent: true
+    urgent: true,
   },
   {
     id: "3",
     type: "offer",
-    category: "Shelter",
-    title: "Room Available for Family",
-    description: "Spare bedroom available for small family. Pet-friendly. Has WiFi and hot water.",
-    quantity: "1 room (up to 4 people)",
-    location: "Eastside Suburbs",
-    postedBy: "Johnson Family",
-    postedAt: "2 hours ago",
-    status: "available"
-  },
-  {
-    id: "4",
-    type: "request",
-    category: "Food",
-    title: "Baby Formula Needed",
-    description: "Newborn baby needs formula. Any brand accepted. Mother unable to breastfeed.",
-    quantity: "Several cans",
-    location: "Central Shelter",
-    postedBy: "Maria T.",
-    postedAt: "45 min ago",
+    category: "Medical",
+    title: "Available: Insulin Supply",
+    description: "Refrigerated and sealed vials.",
+    quantity: "1 month",
+    location: "Purulia Zilla Parishad",
+    postedBy: "Sarah M.",
+    contact: "7029786817",
+    postedAt: new Date(Date.now() - 60 * 60000),
     status: "available",
-    urgent: true
-  },
-  {
-    id: "5",
-    type: "offer",
-    category: "Transportation",
-    title: "Vehicle for Medical Transport",
-    description: "SUV available for transporting elderly or disabled to medical facilities.",
-    quantity: "Available daily 8am-6pm",
-    location: "City-wide",
-    postedBy: "Community Volunteers",
-    postedAt: "3 hours ago",
-    status: "available"
-  },
-  {
-    id: "6",
-    type: "request",
-    category: "Clothing",
-    title: "Winter Clothes for Children",
-    description: "Family of 3 children (ages 4, 7, 10) needs warm clothing. Lost everything in flood.",
-    quantity: "3 sets",
-    location: "Riverside Shelter",
-    postedBy: "Chen Family",
-    postedAt: "5 hours ago",
-    status: "matched"
   },
 ];
 
-const categories = ["All", "Water", "Food", "Medical", "Shelter", "Clothing", "Transportation", "Other"];
-
 export default function Resources() {
-  const [activeTab, setActiveTab] = useState("all");
-  const [searchQuery, setSearchQuery] = useState("");
-  const [selectedCategory, setSelectedCategory] = useState("All");
-  const [isDialogOpen, setIsDialogOpen] = useState(false);
   const { toast } = useToast();
 
-  const filteredResources = resources.filter(resource => {
-    const matchesTab = activeTab === "all" || resource.type === activeTab;
-    const matchesSearch = resource.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                         resource.description.toLowerCase().includes(searchQuery.toLowerCase());
-    const matchesCategory = selectedCategory === "All" || resource.category === selectedCategory;
-    return matchesTab && matchesSearch && matchesCategory;
+  const [tab, setTab] = useState<"all" | ResourceType>("all");
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+  const [open, setOpen] = useState(false);
+  const [resetTarget, setResetTarget] = useState<Resource | null>(null);
+
+  const [resources, setResources] = useState<Resource[]>(() => {
+    const saved = localStorage.getItem(STORAGE_KEY);
+    if (!saved) return initialResources;
+    try {
+      return JSON.parse(saved).map((r: any) => ({
+        ...r,
+        postedAt: new Date(r.postedAt),
+      }));
+    } catch {
+      return initialResources;
+    }
   });
 
-  const handleConnect = (resource: Resource) => {
-    toast({
-      title: "Connection Initiated",
-      description: `You've been connected with ${resource.postedBy}. They will contact you shortly.`,
+  const [form, setForm] = useState({
+    type: "offer",
+    category: "",
+    title: "",
+    description: "",
+    location: "",
+    quantity: "",
+    contact: "",
+  });
+
+  useEffect(() => {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(resources));
+  }, [resources]);
+
+  const postResource = () => {
+    if (!form.title || !form.category || !form.contact) {
+      toast({
+        title: "Missing Fields",
+        description: "Title, category and contact are required.",
+        variant: "destructive",
+      });
+      return;
+    }
+
+    setResources((r) => [
+      {
+        id: Date.now().toString(),
+        postedBy: "Community Member",
+        postedAt: new Date(),
+        status: "available",
+        quantity: form.quantity || "Not specified",
+        ...form,
+      } as Resource,
+      ...r,
+    ]);
+
+    setForm({
+      type: "offer",
+      category: "",
+      title: "",
+      description: "",
+      location: "",
+      quantity: "",
+      contact: "",
     });
+    setOpen(false);
+    toast({ title: "Posted Successfully" });
   };
 
-  const handlePost = () => {
-    setIsDialogOpen(false);
-    toast({
-      title: "Posted Successfully",
-      description: "Your listing is now visible to others in need.",
-    });
-  };
+  const updateStatus = (id: string, status: ResourceStatus) =>
+    setResources((r) =>
+      r.map((x) => (x.id === id ? { ...x, status } : x))
+    );
+
+  const deleteResource = (id: string) =>
+    setResources((r) => r.filter((x) => x.id !== id));
+
+  const filtered = resources.filter((r) => {
+    const tabOk = tab === "all" || r.type === tab;
+    const searchOk =
+      r.title.toLowerCase().includes(search.toLowerCase()) ||
+      r.description.toLowerCase().includes(search.toLowerCase());
+    const categoryOk = category === "All" || r.category === category;
+    return tabOk && searchOk && categoryOk;
+  });
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 pb-10">
       {/* Header */}
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+      <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
         <div>
-          <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Heart className="h-8 w-8 text-primary" />
             Resource Matchmaker
           </h1>
-          <p className="text-muted-foreground mt-1">
-            Connect donors with those in need - every contribution matters
+          <p className="mt-1 text-muted-foreground">
+            Connect donors with those in need
           </p>
         </div>
-        <Dialog open={isDialogOpen} onOpenChange={setIsDialogOpen}>
+
+        <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button variant="safe" size="lg">
+            <Button size="lg" className="gap-2 bg-emerald-600 text-white">
               <Plus className="h-5 w-5" />
               Post Offer/Request
             </Button>
           </DialogTrigger>
-          <DialogContent className="max-w-md">
+
+          <DialogContent>
             <DialogHeader>
               <DialogTitle>Post a Resource</DialogTitle>
             </DialogHeader>
-            <div className="space-y-4 mt-4">
-              <div>
-                <Label>Type</Label>
-                <Select defaultValue="offer">
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="offer">I want to donate/offer</SelectItem>
-                    <SelectItem value="request">I need help</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label>Category</Label>
-                <Select>
-                  <SelectTrigger className="mt-1.5">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categories.filter(c => c !== "All").map(cat => (
-                      <SelectItem key={cat} value={cat.toLowerCase()}>{cat}</SelectItem>
+
+            <div className="space-y-3">
+              <Select
+                onValueChange={(v) =>
+                  setForm({ ...form, type: v as ResourceType })
+                }
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Type" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="offer">I want to donate</SelectItem>
+                  <SelectItem value="request">I need help</SelectItem>
+                </SelectContent>
+              </Select>
+
+              <Select
+                onValueChange={(v) => setForm({ ...form, category: v })}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="Category" />
+                </SelectTrigger>
+                <SelectContent>
+                  {categories
+                    .filter((c) => c !== "All")
+                    .map((c) => (
+                      <SelectItem key={c} value={c}>
+                        {c}
+                      </SelectItem>
                     ))}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div>
-                <Label htmlFor="title">Title</Label>
-                <Input id="title" placeholder="Brief description" className="mt-1.5" />
-              </div>
-              <div>
-                <Label htmlFor="details">Details</Label>
-                <Textarea 
-                  id="details" 
-                  placeholder="Provide more details about the resource..."
-                  className="mt-1.5"
+                </SelectContent>
+              </Select>
+
+              {["title", "location", "quantity", "contact"].map((f) => (
+                <Input
+                  key={f}
+                  placeholder={f[0].toUpperCase() + f.slice(1)}
+                  value={(form as any)[f]}
+                  onChange={(e) =>
+                    setForm({ ...form, [f]: e.target.value })
+                  }
                 />
-              </div>
-              <div>
-                <Label htmlFor="location">Location</Label>
-                <Input id="location" placeholder="Where can this be picked up/delivered?" className="mt-1.5" />
-              </div>
-              <Button className="w-full" onClick={handlePost}>
+              ))}
+
+              <Textarea
+                placeholder="Details"
+                value={form.description}
+                onChange={(e) =>
+                  setForm({ ...form, description: e.target.value })
+                }
+              />
+
+              <Button className="w-full bg-emerald-600" onClick={postResource}>
                 Post Listing
               </Button>
             </div>
@@ -218,133 +283,164 @@ export default function Resources() {
         </Dialog>
       </div>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card variant="safe">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{resources.filter(r => r.type === "offer").length}</p>
-            <p className="text-sm text-muted-foreground">Active Offers</p>
-          </CardContent>
-        </Card>
-        <Card variant="warning">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{resources.filter(r => r.type === "request").length}</p>
-            <p className="text-sm text-muted-foreground">Active Requests</p>
-          </CardContent>
-        </Card>
-        <Card variant="info">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{resources.filter(r => r.status === "matched").length}</p>
-            <p className="text-sm text-muted-foreground">Matched Today</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Tabs & Filters */}
-      <Tabs defaultValue="all" onValueChange={setActiveTab}>
-        <div className="flex flex-col sm:flex-row gap-4">
-          <TabsList className="grid grid-cols-3 w-full sm:w-auto">
+      {/* Filters */}
+      <Tabs defaultValue="all" onValueChange={(v) => setTab(v as any)}>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row">
+          <TabsList>
             <TabsTrigger value="all">All</TabsTrigger>
             <TabsTrigger value="offer">Offers</TabsTrigger>
             <TabsTrigger value="request">Requests</TabsTrigger>
           </TabsList>
-          
-          <div className="flex gap-3 flex-1">
+
+          <div className="flex flex-1 gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <Input 
+              <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+              <Input
                 placeholder="Search resources..."
                 className="pl-10"
-                value={searchQuery}
-                onChange={(e) => setSearchQuery(e.target.value)}
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
               />
             </div>
-            <Select value={selectedCategory} onValueChange={setSelectedCategory}>
+
+            <Select value={category} onValueChange={setCategory}>
               <SelectTrigger className="w-[140px]">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
-                {categories.map(cat => (
-                  <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                {categories.map((c) => (
+                  <SelectItem key={c} value={c}>
+                    {c}
+                  </SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         </div>
 
-        <TabsContent value="all" className="mt-6">
-          <ResourceList resources={filteredResources} onConnect={handleConnect} />
-        </TabsContent>
-        <TabsContent value="offer" className="mt-6">
-          <ResourceList resources={filteredResources} onConnect={handleConnect} />
-        </TabsContent>
-        <TabsContent value="request" className="mt-6">
-          <ResourceList resources={filteredResources} onConnect={handleConnect} />
-        </TabsContent>
-      </Tabs>
-    </div>
-  );
-}
-
-function ResourceList({ resources, onConnect }: { resources: Resource[]; onConnect: (r: Resource) => void }) {
-  return (
-    <div className="grid gap-4 md:grid-cols-2">
-      {resources.map((resource) => (
-        <Card 
-          key={resource.id}
-          variant={resource.urgent ? "warning" : "glass"}
-          className="hover:shadow-lg transition-shadow"
-        >
-          <CardContent className="p-6">
-            <div className="flex items-start justify-between gap-2 mb-3">
-              <div className="flex items-center gap-2">
-                <Badge variant={resource.type === "offer" ? "default" : "secondary"}>
-                  {resource.type === "offer" ? "Offering" : "Requesting"}
-                </Badge>
-                <Badge variant="outline">{resource.category}</Badge>
-                {resource.urgent && (
-                  <Badge variant="destructive">Urgent</Badge>
-                )}
-              </div>
-              {resource.status === "matched" && (
-                <Badge className="bg-success text-success-foreground">
-                  <Check className="h-3 w-3 mr-1" />
-                  Matched
-                </Badge>
+        {/* Cards */}
+        <div className="grid gap-4 md:grid-cols-2">
+          {filtered.map((r) => (
+            <Card
+              key={r.id}
+              className={cn(
+                "border-l-4 shadow-sm",
+                r.urgent
+                  ? "border-l-rose-500 bg-rose-500/5"
+                  : "border-l-primary"
               )}
+            >
+              <CardContent className="p-5">
+                <div className="mb-3 flex justify-between">
+                  <div className="flex gap-2">
+                    <Badge>{r.type}</Badge>
+                    <Badge variant="outline">{r.category}</Badge>
+                  </div>
+                  {r.status === "matched" && (
+                    <Badge className="bg-emerald-500">
+                      <Check className="mr-1 h-3 w-3" />
+                      Matched
+                    </Badge>
+                  )}
+                </div>
+
+                <h3 className="text-lg font-bold">{r.title}</h3>
+                <p className="my-3 text-sm text-muted-foreground line-clamp-2">
+                  {r.description}
+                </p>
+
+                <div className="mb-4 space-y-1.5 text-sm text-muted-foreground">
+                  <div className="flex gap-2">
+                    <MapPin className="h-3.5 w-3.5 text-primary" />
+                    {r.location}
+                  </div>
+                  <div className="flex gap-2">
+                    <Phone className="h-3.5 w-3.5 text-primary" />
+                    {r.contact}
+                  </div>
+                </div>
+
+                <div className="flex gap-2">
+                  <Button size="sm" className="flex-1" asChild>
+                    <a href={`tel:${r.contact}`}>
+                      <Phone className="mr-2 h-4 w-4" />
+                      Call Now
+                    </a>
+                  </Button>
+
+                  {r.status === "matched" ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-amber-600"
+                      onClick={() => setResetTarget(r)}
+                    >
+                      <RotateCcw className="mr-2 h-4 w-4" />
+                      Reset
+                    </Button>
+                  ) : (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => updateStatus(r.id, "matched")}
+                    >
+                      Mark Matched
+                    </Button>
+                  )}
+
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    onClick={() => deleteResource(r.id)}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
+          ))}
+        </div>
+      </Tabs>
+
+      {/* Reset Confirmation */}
+      <Dialog
+        open={!!resetTarget}
+        onOpenChange={(o) => !o && setResetTarget(null)}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <div className="mb-2 flex items-center gap-2 text-amber-600">
+              <AlertCircle className="h-5 w-5" />
+              <DialogTitle>Reset Status?</DialogTitle>
             </div>
-            
-            <h3 className="font-bold text-lg mb-2">{resource.title}</h3>
-            <p className="text-sm text-muted-foreground mb-4">{resource.description}</p>
-            
-            <div className="space-y-2 text-sm mb-4">
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Package className="h-4 w-4" />
-                <span>{resource.quantity}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <MapPin className="h-4 w-4" />
-                <span>{resource.location}</span>
-              </div>
-              <div className="flex items-center gap-2 text-muted-foreground">
-                <Clock className="h-4 w-4" />
-                <span>{resource.postedAt} by {resource.postedBy}</span>
-              </div>
-            </div>
-            
-            {resource.status !== "matched" && (
-              <Button 
-                variant={resource.type === "offer" ? "default" : "safe"}
-                className="w-full"
-                onClick={() => onConnect(resource)}
-              >
-                {resource.type === "offer" ? "Request This" : "Offer Help"}
-                <ArrowRight className="h-4 w-4" />
-              </Button>
-            )}
-          </CardContent>
-        </Card>
-      ))}
+          </DialogHeader>
+
+          <p className="text-sm text-muted-foreground">
+            Reset <strong>{resetTarget?.title}</strong> back to active?
+          </p>
+
+          <DialogFooter>
+            <Button variant="ghost" onClick={() => setResetTarget(null)}>
+              Cancel
+            </Button>
+            <Button
+              className="bg-amber-600"
+              onClick={() => {
+                if (!resetTarget) return;
+                updateStatus(
+                  resetTarget.id,
+                  resetTarget.type === "offer"
+                    ? "available"
+                    : "pending"
+                );
+                setResetTarget(null);
+              }}
+            >
+              Confirm
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
