@@ -1,239 +1,214 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { 
-  Shield, 
-  CheckCircle, 
-  AlertTriangle, 
-  Users, 
-  MapPin,
-  Clock,
-  Send,
-  Heart
+  Shield, CheckCircle, AlertTriangle, MapPin,
+  Clock, Send, Heart, Trash2, PlusCircle, UserPlus, Phone, MessageSquare
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Textarea } from "@/components/ui/textarea";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
-interface Contact {
+interface EmergencyContact {
   id: string;
   name: string;
+  phone: string;
   relation: string;
-  status: "safe" | "unknown" | "need_help";
-  lastUpdate: string;
-  location?: string;
 }
 
-const contacts: Contact[] = [
-  { id: "1", name: "Mom", relation: "Family", status: "safe", lastUpdate: "10 min ago", location: "Home" },
-  { id: "2", name: "John Smith", relation: "Neighbor", status: "unknown", lastUpdate: "2 hours ago" },
-  { id: "3", name: "Sarah Chen", relation: "Friend", status: "safe", lastUpdate: "30 min ago", location: "Central Shelter" },
-  { id: "4", name: "Dad", relation: "Family", status: "need_help", lastUpdate: "1 hour ago", location: "Downtown" },
-  { id: "5", name: "Mike Johnson", relation: "Colleague", status: "unknown", lastUpdate: "3 hours ago" },
-];
-
-const statusConfig = {
-  safe: { label: "Safe", color: "bg-success text-success-foreground", icon: CheckCircle },
-  unknown: { label: "Unknown", color: "bg-muted text-muted-foreground", icon: AlertTriangle },
-  need_help: { label: "Needs Help", color: "bg-destructive text-destructive-foreground", icon: AlertTriangle },
-};
-
 export default function SafetyCheck() {
+  const [contacts, setContacts] = useState<EmergencyContact[]>([]);
+  const [newName, setNewName] = useState("");
+  const [newPhone, setNewPhone] = useState("");
+  const [newRelation, setNewRelation] = useState("");
   const [myStatus, setMyStatus] = useState<"safe" | "need_help" | null>(null);
-  const [message, setMessage] = useState("");
+  
   const { toast } = useToast();
 
-  const handleMarkSafe = () => {
-    setMyStatus("safe");
-    toast({
-      title: "Status Updated",
-      description: "You've been marked as safe. Your contacts have been notified.",
-    });
+  useEffect(() => {
+    const saved = localStorage.getItem("emergency_contacts");
+    if (saved) setContacts(JSON.parse(saved));
+  }, []);
+
+  useEffect(() => {
+    localStorage.setItem("emergency_contacts", JSON.stringify(contacts));
+  }, [contacts]);
+
+  const addContact = () => {
+    if (!newName || newPhone.length !== 10) {
+      toast({ title: "Error", description: "Please enter a valid name and 10-digit phone.", variant: "destructive" });
+      return;
+    }
+    const contact: EmergencyContact = {
+      id: Date.now().toString(),
+      name: newName,
+      phone: newPhone,
+      relation: newRelation || "Contact"
+    };
+    setContacts([...contacts, contact]);
+    setNewName(""); setNewPhone(""); setNewRelation("");
+    toast({ title: "Contact Added", description: `${newName} has been added.` });
+  };
+
+  const deleteContact = (id: string) => {
+    setContacts(contacts.filter(c => c.id !== id));
+    toast({ title: "Removed", description: "Contact deleted." });
   };
 
   const handleNeedHelp = () => {
-    setMyStatus("need_help");
-    toast({
-      title: "Help Request Sent",
-      description: "Emergency contacts and nearby responders have been alerted.",
-    });
-  };
+    if (contacts.length === 0) {
+      toast({ title: "No Contacts", description: "Add emergency contacts first!", variant: "destructive" });
+      return;
+    }
 
-  const handleSendCheckIn = () => {
-    toast({
-      title: "Check-in Sent",
-      description: "Your contacts have been asked to confirm their safety.",
-    });
+    setMyStatus("need_help");
+
+    navigator.geolocation.getCurrentPosition((pos) => {
+      const lat = pos.coords.latitude;
+      const lng = pos.coords.longitude;
+      
+      const mapsUrl = `https://www.google.com/maps?q=${lat},${lng}`;
+      const contactNames = contacts.map(c => c.name).join(", ");
+      const sosMessage = `🚨 EMERGENCY SOS! 🚨\nI need help. My location: ${mapsUrl}`;
+      
+      window.open(`https://wa.me/?text=${encodeURIComponent(sosMessage)}`, '_blank');
+
+      const phoneNumbers = contacts.map(c => c.phone).join(",");
+      setTimeout(() => {
+        window.open(`sms:${phoneNumbers}?body=${encodeURIComponent(sosMessage)}`, '_blank');
+      }, 1000);
+      
+      toast({
+        title: "SOS Triggered",
+        description: `Alerting ${contacts.length} people via WhatsApp & SMS.`,
+        variant: "destructive",
+      });
+    }, () => {
+      window.open(`https://wa.me/?text=${encodeURIComponent("EMERGENCY SOS! I need help but GPS is blocked.")}`, '_blank');
+    }, { enableHighAccuracy: true, timeout: 5000 });
   };
 
   return (
-    <div className="space-y-6">
+    <div className="max-w-3xl mx-auto space-y-6 pb-20 p-4">
       {/* Header */}
-      <div>
-        <h1 className="text-2xl md:text-3xl font-bold flex items-center gap-2">
-          <Shield className="h-8 w-8 text-primary" />
-          Safety Check-In
-        </h1>
-        <p className="text-muted-foreground mt-1">
-          Let loved ones know you're safe or check on their status
-        </p>
+      <div className="flex items-center gap-3 border-b pb-4">
+        <Shield className="h-10 w-10 text-rose-600" />
+        <div>
+          <h1 className="text-2xl font-bold tracking-tight">SOS Safety Center</h1>
+          <p className="text-sm text-muted-foreground">Emergency contacts & broadcast system</p>
+        </div>
       </div>
 
-      {/* My Status */}
-      <Card variant={myStatus === "safe" ? "safe" : myStatus === "need_help" ? "emergency" : "glass"}>
-        <CardHeader>
-          <CardTitle>Your Status</CardTitle>
-          <CardDescription>Let your emergency contacts know you're okay</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
-          {myStatus ? (
-            <div className="flex items-center gap-4">
-              <div className={cn(
-                "w-16 h-16 rounded-full flex items-center justify-center",
-                myStatus === "safe" ? "bg-success/20" : "bg-destructive/20"
-              )}>
-                {myStatus === "safe" ? (
-                  <CheckCircle className="h-8 w-8 text-success" />
-                ) : (
-                  <AlertTriangle className="h-8 w-8 text-destructive animate-pulse" />
-                )}
-              </div>
-              <div>
-                <p className="text-xl font-bold">
-                  {myStatus === "safe" ? "You're marked as safe" : "Help is on the way"}
-                </p>
-                <p className="text-muted-foreground">
-                  {myStatus === "safe" 
-                    ? "Your contacts have been notified" 
-                    : "Emergency responders have been alerted"}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <div className="flex flex-col sm:flex-row gap-3">
-              <Button variant="safe" size="xl" className="flex-1" onClick={handleMarkSafe}>
-                <CheckCircle className="h-6 w-6" />
-                I'm Safe
-              </Button>
-              <Button variant="emergency" size="xl" className="flex-1" onClick={handleNeedHelp}>
-                <AlertTriangle className="h-6 w-6" />
-                I Need Help
-              </Button>
-            </div>
-          )}
-          
-          <div>
-            <Label htmlFor="message">Add a message (optional)</Label>
-            <div className="flex gap-2 mt-1.5">
-              <Input 
-                id="message"
-                placeholder="I'm at the community center..."
-                value={message}
-                onChange={(e) => setMessage(e.target.value)}
-              />
-              <Button variant="default">
-                <Send className="h-4 w-4" />
-              </Button>
-            </div>
+      {/* Main Action Card */}
+      <Card className={cn(
+        "border-2",
+        myStatus === "need_help" ? "border-rose-600 bg-rose-50/10" : "border-primary/20"
+      )}>
+        <CardContent className="pt-6 space-y-4">
+          <div className="flex flex-col sm:flex-row gap-4">
+            <Button 
+              variant="outline" 
+              className="flex-1 h-20 text-lg border-emerald-500 text-emerald-600 hover:bg-emerald-50/30"
+              onClick={() => { setMyStatus("safe"); toast({ title: "Safe", description: "Status updated to Safe." }); }}
+            >
+              <CheckCircle className="mr-2 h-6 w-6" /> I'm Safe
+            </Button>
+            <Button 
+              variant="destructive" 
+              className="flex-1 h-20 text-lg font-bold"
+              onClick={handleNeedHelp}
+            >
+              <AlertTriangle className="mr-2 h-6 w-6" /> I NEED HELP
+            </Button>
           </div>
         </CardContent>
       </Card>
 
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
-        <Card variant="safe">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{contacts.filter(c => c.status === "safe").length}</p>
-            <p className="text-sm text-muted-foreground">Confirmed Safe</p>
-          </CardContent>
-        </Card>
-        <Card variant="glass">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{contacts.filter(c => c.status === "unknown").length}</p>
-            <p className="text-sm text-muted-foreground">Unknown</p>
-          </CardContent>
-        </Card>
-        <Card variant="emergency">
-          <CardContent className="p-4 text-center">
-            <p className="text-3xl font-bold">{contacts.filter(c => c.status === "need_help").length}</p>
-            <p className="text-sm text-muted-foreground">Need Help</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Request Check-In */}
-      <Card variant="glass">
-        <CardContent className="p-4 flex items-center justify-between">
-          <div className="flex items-center gap-3">
-            <Users className="h-5 w-5 text-primary" />
-            <div>
-              <p className="font-medium">Request Check-In</p>
-              <p className="text-sm text-muted-foreground">Ask all contacts to confirm their safety</p>
+      {/* Add New Contact Feature */}
+      <Card>
+        <CardHeader className="pb-3">
+          <CardTitle className="text-md flex items-center gap-2">
+            <UserPlus className="h-5 w-5" /> Add Emergency Contact
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+            <div className="space-y-1">
+              <Label>Name</Label>
+              <Input placeholder="Name" value={newName} onChange={e => setNewName(e.target.value)} />
+            </div>
+            <div className="space-y-1">
+              <Label>Phone Number</Label>
+              <div className="relative">
+                <span className="absolute left-3 top-2.5 text-xs text-muted-foreground">+91</span>
+                <Input className="pl-10" placeholder="10 digits" value={newPhone} onChange={e => setNewPhone(e.target.value.replace(/\D/g, '').slice(0,10))} />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <Label>Relation</Label>
+              <Input placeholder="Relation" value={newRelation} onChange={e => setNewRelation(e.target.value)} />
             </div>
           </div>
-          <Button variant="default" onClick={handleSendCheckIn}>
-            Send Request
+          <Button className="w-full" onClick={addContact}>
+            <PlusCircle className="mr-2 h-4 w-4" /> Save Contact
           </Button>
         </CardContent>
       </Card>
 
-      {/* Contact List */}
-      <div>
-        <h2 className="text-xl font-bold mb-4 flex items-center gap-2">
-          <Heart className="h-5 w-5 text-primary" />
-          Emergency Contacts
+      {/* Dynamic Contact List */}
+      <div className="space-y-4">
+        <h2 className="text-xl font-bold flex items-center gap-2">
+          <Heart className="h-5 w-5 text-rose-500 fill-rose-500" />
+          Emergency Contacts ({contacts.length})
         </h2>
-        <div className="space-y-3">
-          {contacts.map((contact) => {
-            const config = statusConfig[contact.status];
-            const StatusIcon = config.icon;
-            
-            return (
-              <Card 
-                key={contact.id}
-                variant={contact.status === "need_help" ? "emergency" : contact.status === "safe" ? "safe" : "glass"}
-              >
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-4">
-                    <Avatar className="h-12 w-12 border-2 border-border">
-                      <AvatarFallback className="bg-secondary font-bold">
-                        {contact.name.split(' ').map(n => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center justify-between">
-                        <div>
-                          <h4 className="font-semibold">{contact.name}</h4>
-                          <p className="text-sm text-muted-foreground">{contact.relation}</p>
-                        </div>
-                        <Badge className={config.color}>
-                          <StatusIcon className="h-3 w-3 mr-1" />
-                          {config.label}
-                        </Badge>
+        
+        {contacts.length === 0 ? (
+          <div className="text-center p-10 border-2 border-dashed rounded-lg text-muted-foreground text-sm italic">
+            No contacts added yet.
+          </div>
+        ) : (
+          <div className="grid gap-3">
+            {contacts.map((contact) => (
+              <Card key={contact.id} className="border-l-4 border-l-rose-500">
+                <CardContent className="p-4 flex items-center gap-4">
+                  <Avatar className="h-10 w-10 border">
+                    <AvatarFallback className="bg-slate-50 text-slate-600 font-bold">
+                      {contact.name[0]}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div className="flex-1">
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold text-sm">{contact.name}</h4>
+                        <p className="text-[10px] uppercase text-muted-foreground">{contact.relation} • {contact.phone}</p>
                       </div>
-                      <div className="flex items-center gap-4 mt-2 text-xs text-muted-foreground">
-                        <span className="flex items-center gap-1">
-                          <Clock className="h-3 w-3" />
-                          {contact.lastUpdate}
-                        </span>
-                        {contact.location && (
-                          <span className="flex items-center gap-1">
-                            <MapPin className="h-3 w-3" />
-                            {contact.location}
-                          </span>
-                        )}
+                      <div className="flex gap-2">
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-9 w-9 text-emerald-600 hover:bg-emerald-50"
+                          onClick={() => window.open(`tel:${contact.phone}`)}
+                        >
+                          <Phone className="h-4 w-4" />
+                        </Button>
+                        <Button 
+                          variant="ghost" 
+                          size="icon" 
+                          className="h-9 w-9 text-rose-500 hover:bg-rose-50"
+                          onClick={() => deleteContact(contact.id)}
+                        >
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
                       </div>
                     </div>
                   </div>
                 </CardContent>
               </Card>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

@@ -146,7 +146,7 @@ export default function SOS() {
             {/* Action buttons */}
             <Button variant="emergency" className="mt-6 w-full" size="lg">
               <Phone className="h-5 w-5" />
-              Call Emergency: 911
+              Call Emergency: 100
             </Button>
             <Button 
               variant="outline" 
@@ -340,7 +340,7 @@ export default function SOS() {
               <Input 
                 id="phone" 
                 type="tel" 
-                placeholder="+1 (555) 000-0000"
+                placeholder="+91 1234567890"
                 className="mt-1.5"
               />
             </div>

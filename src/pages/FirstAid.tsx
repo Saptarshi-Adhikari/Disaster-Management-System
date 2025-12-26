@@ -49,7 +49,7 @@ const guides: FirstAidGuide[] = [
       {
         step: 2,
         title: "Call for Help",
-        description: "If no response, call 911 immediately or have someone else call. Put the phone on speaker so you can follow instructions."
+        description: "If no response, call 100 immediately or have someone else call. Put the phone on speaker so you can follow instructions."
       },
       {
         step: 3,
@@ -181,7 +181,7 @@ const guides: FirstAidGuide[] = [
 
 const quickTips = [
   { icon: AlertTriangle, text: "Stay calm - panicking makes everything harder" },
-  { icon: CheckCircle, text: "Call 911 first if the situation is life-threatening" },
+  { icon: CheckCircle, text: "Call 100 first if the situation is life-threatening" },
   { icon: Clock, text: "Every second counts in emergencies" },
 ];
 

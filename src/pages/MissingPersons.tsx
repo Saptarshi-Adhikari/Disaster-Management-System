@@ -57,7 +57,7 @@ const initialMissingPersons: Person[] = [
     description: `5'8", wheatish complexion, wearing a white kurta.`,
     status: "missing",
     reportedAt: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    contact: "033-2214-XXXX",
+    contact: "03322145566",
   },
   {
     id: "2",
@@ -70,21 +70,7 @@ const initialMissingPersons: Person[] = [
     description: `5'2", gray hair bun, wearing a red shawl.`,
     status: "searching",
     reportedAt: new Date(Date.now() - 10 * 60 * 60 * 1000),
-    contact: "0354-225-XXXX",
-  },
-  {
-    id: "3",
-    name: "Rahul Mondal",
-    age: 12,
-    gender: "Male",
-    lastSeen: new Date(Date.now() - 2 * 60 * 60 * 1000),
-    lastLocation: "Canning Ferry Ghat",
-    district: "South 24 Parganas",
-    description:
-      "4'5\", short black hair, blue school uniform, yellow backpack.",
-    status: "found",
-    reportedAt: new Date(Date.now() - 60 * 60 * 1000),
-    contact: "03210-225-XXXX",
+    contact: "03542251122",
   },
 ];
 
@@ -115,6 +101,7 @@ export default function MissingPersons() {
   const [open, setOpen] = useState(false);
 
   const [persons, setPersons] = useState<Person[]>(() => {
+    if (typeof window === "undefined") return initialMissingPersons;
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return initialMissingPersons;
 
@@ -143,7 +130,14 @@ export default function MissingPersons() {
   }, [persons]);
 
   const reportPerson = () => {
-    if (!form.name || !form.contact) return;
+    if (!form.name || !form.contact || !form.age) {
+      toast({ 
+        title: "Missing Information", 
+        description: "Please fill in all required fields.",
+        variant: "destructive" 
+      });
+      return;
+    }
 
     setPersons((p) => [
       {
@@ -201,7 +195,7 @@ export default function MissingPersons() {
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg" className="gap-2 bg-rose-600 text-white">
+            <Button size="lg" className="gap-2 bg-rose-600 text-white hover:bg-rose-700">
               <Plus className="h-5 w-5" />
               Report Missing
             </Button>
@@ -223,10 +217,25 @@ export default function MissingPersons() {
                 <Input
                   key={key}
                   placeholder={label}
+                  type={key === "age" ? "number" : key === "contact" ? "tel" : "text"}
+                  min={key === "age" ? "1" : undefined}
                   value={(form as any)[key]}
-                  onChange={(e) =>
-                    setForm({ ...form, [key]: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+
+                    // AGE: Only positive numbers
+                    if (key === "age") {
+                      if (val !== "" && (!/^\d+$/.test(val) || parseInt(val) <= 0)) return;
+                    }
+
+                    // CONTACT: Only digits, max 12 (to allow for country code if needed)
+                    if (key === "contact") {
+                      if (val !== "" && !/^\d+$/.test(val)) return;
+                      if (val.length > 12) return;
+                    }
+
+                    setForm((prev) => ({ ...prev, [key]: val }));
+                  }}
                 />
               ))}
 
@@ -234,11 +243,11 @@ export default function MissingPersons() {
                 placeholder="Identification Marks"
                 value={form.description}
                 onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
+                  setForm((prev) => ({ ...prev, description: e.target.value }))
                 }
               />
 
-              <Button className="w-full bg-rose-600" onClick={reportPerson}>
+              <Button className="w-full bg-rose-600 hover:bg-rose-700" onClick={reportPerson}>
                 Save Report
               </Button>
             </div>
@@ -328,8 +337,8 @@ export default function MissingPersons() {
                       <Button
                         key={s}
                         size="sm"
-                        variant="outline"
-                        className="flex-1 text-[10px]"
+                        variant={p.status === s ? "default" : "outline"}
+                        className="flex-1 text-[10px] capitalize"
                         onClick={() => updateStatus(p.id, s)}
                       >
                         {s}

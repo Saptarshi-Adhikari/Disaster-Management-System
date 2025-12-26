@@ -3,9 +3,10 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
 
-type AlertType = "critical" | "warning" | "info" | "resolved";
+// Exporting types so they can be reused in the Dashboard
+export type AlertType = "critical" | "warning" | "info" | "resolved";
 
-interface Alert {
+export interface Alert {
   id: string;
   type: AlertType;
   title: string;
@@ -14,40 +15,9 @@ interface Alert {
   location?: string;
 }
 
-const alerts: Alert[] = [
-  {
-    id: "1",
-    type: "critical",
-    title: "Flash Flood Warning",
-    message: "Immediate evacuation required for Zone A residents",
-    time: "2 min ago",
-    location: "Downtown District",
-  },
-  {
-    id: "2",
-    type: "warning",
-    title: "Power Outage",
-    message: "Grid failure affecting 5,000+ homes in the northern sector",
-    time: "15 min ago",
-    location: "North Sector",
-  },
-  {
-    id: "3",
-    type: "info",
-    title: "Shelter Opening",
-    message: "Central Community Center now accepting evacuees",
-    time: "32 min ago",
-    location: "Central Area",
-  },
-  {
-    id: "4",
-    type: "resolved",
-    title: "Road Cleared",
-    message: "Highway 101 debris removed, traffic flowing normally",
-    time: "1 hour ago",
-    location: "Highway 101",
-  },
-];
+interface AlertsFeedProps {
+  alerts: Alert[];
+}
 
 const alertConfig: Record<
   AlertType,
@@ -84,11 +54,11 @@ const alertConfig: Record<
   },
 };
 
-export function AlertsFeed() {
+export function AlertsFeed({ alerts }: AlertsFeedProps) {
   return (
     <Card variant="glass" className="slide-up">
       <CardHeader className="flex items-center justify-between">
-        <CardTitle className="flex items-center gap-2">
+        <CardTitle className="flex items-center gap-2 text-lg">
           <AlertTriangle className="h-5 w-5 text-warning" />
           Live Alerts
         </CardTitle>
@@ -100,44 +70,48 @@ export function AlertsFeed() {
       </CardHeader>
 
       <CardContent className="max-h-[400px] space-y-4 overflow-y-auto">
-        {alerts.map(({ id, type, title, message, time, location }) => {
-          const { icon: Icon, color, bg, badge } = alertConfig[type];
+        {alerts.length === 0 ? (
+          <p className="text-center text-muted-foreground py-10">No active alerts.</p>
+        ) : (
+          alerts.map(({ id, type, title, message, time, location }) => {
+            const { icon: Icon, color, bg, badge } = alertConfig[type];
 
-          return (
-            <div
-              key={id}
-              className={cn(
-                "rounded-lg border border-border/50 p-4 transition-all hover:border-border",
-                bg
-              )}
-            >
-              <div className="flex items-start gap-3">
-                <div className={cn("rounded-lg p-2", bg)}>
-                  <Icon className={cn("h-4 w-4", color)} />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="flex items-center justify-between gap-2">
-                    <h4 className="truncate text-sm font-semibold">{title}</h4>
-                    <Badge variant={badge} className="shrink-0 text-xs capitalize">
-                      {type}
-                    </Badge>
+            return (
+              <div
+                key={id}
+                className={cn(
+                  "rounded-lg border border-border/50 p-4 transition-all hover:border-border",
+                  bg
+                )}
+              >
+                <div className="flex items-start gap-3">
+                  <div className={cn("rounded-lg p-2", bg)}>
+                    <Icon className={cn("h-4 w-4", color)} />
                   </div>
 
-                  <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <h4 className="truncate text-sm font-semibold">{title}</h4>
+                      <Badge variant={badge} className="shrink-0 text-[10px] h-5 capitalize">
+                        {type}
+                      </Badge>
+                    </div>
 
-                  <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
-                    <span className="flex items-center gap-1">
-                      <Clock className="h-3 w-3" />
-                      {time}
-                    </span>
-                    {location && <span className="truncate">{location}</span>}
+                    <p className="mt-1 text-sm text-muted-foreground">{message}</p>
+
+                    <div className="mt-2 flex items-center gap-3 text-xs text-muted-foreground">
+                      <span className="flex items-center gap-1">
+                        <Clock className="h-3 w-3" />
+                        {time}
+                      </span>
+                      {location && <span className="truncate">• {location}</span>}
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        )}
       </CardContent>
     </Card>
   );

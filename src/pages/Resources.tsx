@@ -73,38 +73,11 @@ const initialResources: Resource[] = [
     category: "Water",
     title: "Bottled Water - 50 Cases",
     description: "Clean drinking water. Delivery available.",
-    quantity: "50 cases",
+    quantity: "50",
     location: "Salt Lake City",
     postedBy: "Local Grocery Store",
     contact: "7029786817",
     postedAt: new Date(Date.now() - 30 * 60000),
-    status: "available",
-  },
-  {
-    id: "2",
-    type: "request",
-    category: "Medical",
-    title: "Insulin Needed Urgently",
-    description: "Supply running out in 24 hours.",
-    quantity: "1 month",
-    location: "North District",
-    postedBy: "Sarah M.",
-    contact: "7029786817",
-    postedAt: new Date(Date.now() - 60 * 60000),
-    status: "pending",
-    urgent: true,
-  },
-  {
-    id: "3",
-    type: "offer",
-    category: "Medical",
-    title: "Available: Insulin Supply",
-    description: "Refrigerated and sealed vials.",
-    quantity: "1 month",
-    location: "Purulia Zilla Parishad",
-    postedBy: "Sarah M.",
-    contact: "7029786817",
-    postedAt: new Date(Date.now() - 60 * 60000),
     status: "available",
   },
 ];
@@ -119,6 +92,7 @@ export default function Resources() {
   const [resetTarget, setResetTarget] = useState<Resource | null>(null);
 
   const [resources, setResources] = useState<Resource[]>(() => {
+    if (typeof window === "undefined") return initialResources;
     const saved = localStorage.getItem(STORAGE_KEY);
     if (!saved) return initialResources;
     try {
@@ -161,8 +135,8 @@ export default function Resources() {
         postedBy: "Community Member",
         postedAt: new Date(),
         status: "available",
-        quantity: form.quantity || "Not specified",
         ...form,
+        quantity: form.quantity || "0",
       } as Resource,
       ...r,
     ]);
@@ -213,7 +187,7 @@ export default function Resources() {
 
         <Dialog open={open} onOpenChange={setOpen}>
           <DialogTrigger asChild>
-            <Button size="lg" className="gap-2 bg-emerald-600 text-white">
+            <Button size="lg" className="gap-2 bg-emerald-600 text-white hover:bg-emerald-700">
               <Plus className="h-5 w-5" />
               Post Offer/Request
             </Button>
@@ -227,7 +201,7 @@ export default function Resources() {
             <div className="space-y-3">
               <Select
                 onValueChange={(v) =>
-                  setForm({ ...form, type: v as ResourceType })
+                  setForm((prev) => ({ ...prev, type: v as ResourceType }))
                 }
               >
                 <SelectTrigger>
@@ -240,7 +214,7 @@ export default function Resources() {
               </Select>
 
               <Select
-                onValueChange={(v) => setForm({ ...form, category: v })}
+                onValueChange={(v) => setForm((prev) => ({ ...prev, category: v }))}
               >
                 <SelectTrigger>
                   <SelectValue placeholder="Category" />
@@ -260,10 +234,22 @@ export default function Resources() {
                 <Input
                   key={f}
                   placeholder={f[0].toUpperCase() + f.slice(1)}
+                  // Set types for numeric fields
+                  type={f === "quantity" || f === "contact" ? "tel" : "text"}
                   value={(form as any)[f]}
-                  onChange={(e) =>
-                    setForm({ ...form, [f]: e.target.value })
-                  }
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    
+                    // Numeric Restriction for Quantity and Contact
+                    if (f === "quantity" || f === "contact") {
+                      // Only allow digits, prevent spaces/special chars
+                      if (val !== "" && !/^\d+$/.test(val)) return;
+                      // Optional: prevent excessive length
+                      if (f === "contact" && val.length > 12) return;
+                    }
+
+                    setForm((prev) => ({ ...prev, [f]: val }));
+                  }}
                 />
               ))}
 
@@ -271,11 +257,11 @@ export default function Resources() {
                 placeholder="Details"
                 value={form.description}
                 onChange={(e) =>
-                  setForm({ ...form, description: e.target.value })
+                  setForm((prev) => ({ ...prev, description: e.target.value }))
                 }
               />
 
-              <Button className="w-full bg-emerald-600" onClick={postResource}>
+              <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={postResource}>
                 Post Listing
               </Button>
             </div>
@@ -333,7 +319,7 @@ export default function Resources() {
               <CardContent className="p-5">
                 <div className="mb-3 flex justify-between">
                   <div className="flex gap-2">
-                    <Badge>{r.type}</Badge>
+                    <Badge className="capitalize">{r.type}</Badge>
                     <Badge variant="outline">{r.category}</Badge>
                   </div>
                   {r.status === "matched" && (
@@ -354,6 +340,11 @@ export default function Resources() {
                     <MapPin className="h-3.5 w-3.5 text-primary" />
                     {r.location}
                   </div>
+                  <div className="flex gap-2 font-medium">
+                    <Badge variant="secondary" className="text-[10px] h-5">
+                      Qty: {r.quantity}
+                    </Badge>
+                  </div>
                   <div className="flex gap-2">
                     <Phone className="h-3.5 w-3.5 text-primary" />
                     {r.contact}
@@ -372,7 +363,7 @@ export default function Resources() {
                     <Button
                       size="sm"
                       variant="outline"
-                      className="text-amber-600"
+                      className="text-amber-600 border-amber-200"
                       onClick={() => setResetTarget(r)}
                     >
                       <RotateCcw className="mr-2 h-4 w-4" />
@@ -402,7 +393,7 @@ export default function Resources() {
         </div>
       </Tabs>
 
-      {/* Reset Confirmation */}
+      {/* Reset Confirmation Dialog */}
       <Dialog
         open={!!resetTarget}
         onOpenChange={(o) => !o && setResetTarget(null)}
@@ -424,7 +415,7 @@ export default function Resources() {
               Cancel
             </Button>
             <Button
-              className="bg-amber-600"
+              className="bg-amber-600 hover:bg-amber-700"
               onClick={() => {
                 if (!resetTarget) return;
                 updateStatus(
