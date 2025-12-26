@@ -1,17 +1,15 @@
-import { ReactNode } from "react";
+import { Outlet } from "react-router-dom";
 import { Sidebar } from "./Sidebar";
 
-interface LayoutProps {
-  children: ReactNode;
-}
-
-export function Layout({ children }: LayoutProps) {
+export function Layout() {
   return (
-    <div className="min-h-screen bg-background">
+    // bg-[#0B1221] matches your dark theme dashboard exactly
+    <div className="flex min-h-screen bg-[#0B1221]"> 
       <Sidebar />
-      <main className="md:ml-64 min-h-screen">
-        <div className="p-4 md:p-6 lg:p-8">
-          {children}
+      {/* md:pl-64 prevents the dashboard from sliding under the sidebar */}
+      <main className="flex-1 md:pl-64 transition-all duration-300">
+        <div className="p-4 md:p-8">
+          <Outlet />
         </div>
       </main>
     </div>
