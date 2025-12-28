@@ -3,7 +3,7 @@ import { formatDistanceToNow } from "date-fns";
 import { db, auth } from "@/firebase/firebase";
 import { onAuthStateChanged, User } from "firebase/auth";
 import { collection, query, where, onSnapshot, addDoc, Timestamp } from "firebase/firestore";
-import Cropper from "react-easy-crop"; // Required: npm install react-easy-crop
+import Cropper from "react-easy-crop"; 
 import {
   Users,
   Search,
@@ -17,6 +17,7 @@ import {
   Camera,
   X,
   Maximize2,
+  Check,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,6 @@ import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
 type Status = "missing" | "found" | "searching";
-const ADMIN_PHONE = "+917029786817";
 
 interface Person {
   id: string;
@@ -51,7 +51,7 @@ interface Person {
   reportedAt: any;
   contact: string;
   status_approval?: string;
-  image?: string; // Added for image support
+  image?: string; 
 }
 
 const statusConfig: Record<Status, { label: string; color: string; icon: any }> = {
@@ -69,12 +69,12 @@ export default function MissingPersons() {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [currentUser, setCurrentUser] = useState<User | null>(null);
 
-  // --- NEW IMAGE STATES ---
+  // --- IMAGE STATES ---
   const [previewOpen, setPreviewOpen] = useState<string | null>(null);
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<any>(null);
 
   const [form, setForm] = useState({ 
     name: "", age: "", district: "", lastLocation: "", description: "", contact: "", image: "" 
@@ -99,8 +99,10 @@ export default function MissingPersons() {
   const onFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const reader = new FileReader();
-      reader.addEventListener("load", () => setImageToCrop(reader.result as string));
       reader.readAsDataURL(e.target.files[0]);
+      reader.onload = () => {
+        setImageToCrop(reader.result as string);
+      };
     }
   };
 
@@ -108,28 +110,45 @@ export default function MissingPersons() {
     setCroppedAreaPixels(pixels);
   }, []);
 
-  const createCroppedImage = async () => {
+  const createCroppedImage = useCallback(async () => {
     try {
-      const canvas = document.createElement("canvas");
-      const img = new Image();
-      img.src = imageToCrop!;
-      await new Promise((res) => (img.onload = res));
+      if (!imageToCrop || !croppedAreaPixels) return;
 
+      const image = new Image();
+      image.src = imageToCrop;
+      await new Promise((resolve) => (image.onload = resolve));
+
+      const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
-      canvas.width = 300; // Optimal size for Firebase/Performance
+
+      if (!ctx) return;
+
+      canvas.width = 300;
       canvas.height = 300;
 
-      if (ctx && croppedAreaPixels) {
-        const { x, y, width, height } = croppedAreaPixels as any;
-        ctx.drawImage(img, x, y, width, height, 0, 0, 300, 300);
-        const base64Image = canvas.toDataURL("image/jpeg", 0.7); // 0.7 compression
-        setForm({ ...form, image: base64Image });
-        setImageToCrop(null);
-      }
+      ctx.drawImage(
+        image,
+        croppedAreaPixels.x,
+        croppedAreaPixels.y,
+        croppedAreaPixels.width,
+        croppedAreaPixels.height,
+        0,
+        0,
+        300,
+        300
+      );
+
+      const base64Image = canvas.toDataURL("image/jpeg", 0.8);
+      setForm((prev) => ({ ...prev, image: base64Image }));
+      
+      setImageToCrop(null);
+      setZoom(1);
+      setCrop({ x: 0, y: 0 });
     } catch (e) {
-      toast({ title: "Error cropping image", variant: "destructive" });
+      console.error(e);
+      toast({ title: "Crop failed", description: "Could not process image.", variant: "destructive" });
     }
-  };
+  }, [imageToCrop, croppedAreaPixels, toast]);
 
   const reportPerson = async () => {
     if (!form.name || !form.contact.trim() || !form.age) {
@@ -171,7 +190,7 @@ export default function MissingPersons() {
     <div className="space-y-6 pb-10">
       {/* FULL SCREEN IMAGE PREVIEW MODAL */}
       {previewOpen && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/95 p-4" onClick={() => setPreviewOpen(null)}>
+        <div className="fixed inset-0 z-[200] flex items-center justify-center bg-black/95 p-4" onClick={() => setPreviewOpen(null)}>
           <button className="absolute right-6 top-6 text-white hover:text-rose-500 transition-colors">
             <X className="h-10 w-10" />
           </button>
@@ -179,10 +198,13 @@ export default function MissingPersons() {
         </div>
       )}
 
-      {/* IMAGE CROPPER MODAL (Triggered during report) */}
+      {/* IMAGE CROPPER OVERLAY - FIXED CONTROLS */}
       {imageToCrop && (
-        <div className="fixed inset-0 z-[110] flex flex-col items-center justify-center bg-slate-950 p-4">
-          <div className="relative h-[350px] w-full max-w-md overflow-hidden rounded-xl bg-slate-900 border border-slate-800">
+        <div 
+          className="fixed inset-0 z-[9999] flex flex-col items-center justify-center bg-black/95 p-4 pointer-events-auto"
+          onPointerDown={(e) => e.stopPropagation()} // Stop Dialog from blocking slider drag
+        >
+          <div className="relative h-[400px] w-full max-w-md overflow-hidden rounded-xl bg-slate-900 border border-slate-800 shadow-2xl">
             <Cropper
               image={imageToCrop}
               crop={crop}
@@ -195,9 +217,38 @@ export default function MissingPersons() {
               onZoomChange={setZoom}
             />
           </div>
-          <div className="mt-6 flex w-full max-w-md gap-3">
-            <Button variant="outline" className="flex-1 border-slate-700 text-white" onClick={() => setImageToCrop(null)}>Cancel</Button>
-            <Button className="flex-1 bg-rose-600 hover:bg-rose-700" onClick={createCroppedImage}>Apply Crop</Button>
+          
+          <div className="mt-8 w-full max-w-md space-y-6 pointer-events-auto">
+            <div className="px-4">
+              <Label className="mb-4 block text-center text-xs font-semibold uppercase tracking-widest text-slate-400">
+                Zoom Level
+              </Label>
+              <input 
+                type="range"
+                min={1}
+                max={3}
+                step={0.1}
+                value={zoom}
+                onChange={(e) => setZoom(Number(e.target.value))}
+                className="w-full h-2 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-rose-500 relative z-[10001]"
+              />
+            </div>
+
+            <div className="flex gap-4 px-4">
+              <Button 
+                variant="outline" 
+                className="flex-1 bg-slate-800 border-slate-700 text-white hover:bg-slate-700" 
+                onClick={() => setImageToCrop(null)}
+              >
+                Cancel
+              </Button>
+              <Button 
+                className="flex-1 bg-rose-600 hover:bg-rose-700 text-white gap-2" 
+                onClick={createCroppedImage}
+              >
+                <Check className="h-4 w-4" /> Apply Photo
+              </Button>
+            </div>
           </div>
         </div>
       )}
@@ -234,7 +285,15 @@ export default function MissingPersons() {
                   )}
                 </div>
                 <input type="file" id="photo-upload" className="hidden" accept="image/*" onChange={onFileChange} />
-                {form.image && <p className="text-[10px] text-emerald-500 font-medium">Photo Attached</p>}
+                {form.image && (
+                  <button 
+                    type="button"
+                    onClick={() => setForm({...form, image: ""})} 
+                    className="text-[10px] text-rose-400 underline"
+                  >
+                    Remove Photo
+                  </button>
+                )}
               </div>
 
               <div className="space-y-1">
@@ -285,7 +344,6 @@ export default function MissingPersons() {
                 <CardContent className="p-5">
                   <div className="mb-4 flex justify-between items-start gap-3">
                     <div className="flex gap-4 items-center">
-                      {/* Person Photo Avatar */}
                       <div 
                         className="group relative h-16 w-16 flex-shrink-0 cursor-pointer overflow-hidden rounded-full border border-slate-700 bg-slate-800"
                         onClick={() => p.image && setPreviewOpen(p.image)}
