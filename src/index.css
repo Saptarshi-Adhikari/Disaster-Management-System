@@ -51,34 +51,63 @@
     color: hsl(var(--foreground));
     font-family: Inter, system-ui, sans-serif;
     -webkit-font-smoothing: antialiased;
+    /* Prevent horizontal shake on mobile when map tiles load */
+    overflow-x: hidden; 
   }
 
-  /* Scrollbar */
+  /* Scrollbar - Refined for a cleaner dashboard look */
   ::-webkit-scrollbar {
-    width: 8px;
-  }
-
-  ::-webkit-scrollbar-track,
-  ::-webkit-scrollbar-thumb {
-    border-radius: 9999px;
+    width: 6px;
   }
 
   ::-webkit-scrollbar-track {
-    background: hsl(var(--muted));
+    background: transparent;
   }
 
   ::-webkit-scrollbar-thumb {
-    background: hsl(var(--muted-foreground) / 0.3);
+    background: hsl(var(--muted-foreground) / 0.2);
+    border-radius: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb:hover {
+    background: hsl(var(--muted-foreground) / 0.4);
   }
 }
 
-/* Leaflet fixes */
+/* --- LEAFLET INTEGRATION FIXES --- */
+
 .leaflet-container {
   width: 100%;
-  height: 100%;
-  border-radius: 0.5rem;
+  /* Use !important to ensure it fills the parent container height defined in your TSX */
+  height: 100% !important; 
+  border-radius: var(--radius);
+  background-color: hsl(var(--background)) !important;
+  /* Fix for blurry map tiles on some browsers */
+  image-rendering: -webkit-optimize-contrast;
 }
 
+/* Z-Index Management: 
+   Leaflet default is 400. This brings it down so Shadcn Modals/Tooltips 
+   (usually 50+) always stay on top.
+*/
 .leaflet-pane {
   z-index: 1 !important;
+}
+
+.leaflet-top, 
+.leaflet-bottom {
+  z-index: 2 !important;
+}
+
+/* Marker Shadow Fix - Prevents unintended layout shifts */
+.leaflet-marker-icon {
+  outline: none;
+}
+
+/* Customizing the Leaflet Popup to match your Dark Theme */
+.leaflet-popup-content-wrapper, .leaflet-popup-tip {
+  background-color: hsl(var(--card)) !important;
+  color: hsl(var(--foreground)) !important;
+  border: 1px solid hsl(var(--border));
+  box-shadow: 0 10px 15px -3px rgb(0 0 0 / 0.5);
 }

@@ -20,15 +20,17 @@ import Index from "@/pages/Index"
 import Login from "@/pages/Login"
 import Register from "@/pages/Register"
 import Dashboard from "@/pages/Dashboard"
-import ResetPassword from "@/pages/ResetPassword"; // 1. IMPORT YOUR NEW PAGE
-import SOS from "@/pages/SOS"
+import ResetPassword from "@/pages/ResetPassword"
+// Updated: Import the new merged SafetyCenter
+import SafetyCenter from "@/pages/SafetyCenter" 
 import Shelters from "@/pages/Shelters"
 import MissingPersons from "@/pages/MissingPersons"
 import Resources from "@/pages/Resources"
 import Alerts from "@/pages/Alerts"
 import FirstAid from "@/pages/FirstAid"
-import SafetyCheck from "@/pages/SafetyCheck"
+import Profile from "@/pages/Profile"
 import NotFound from "@/pages/NotFound"
+import AdminPage from "@/pages/AdminPage" 
 
 const queryClient = new QueryClient()
 
@@ -45,19 +47,27 @@ function App() {
           <Route path="/login" element={<Login />} />
           <Route path="/register" element={<Register />} />
           
-          {/* 2. ADD THE RESET PASSWORD ROUTE HERE */}
+          {/* PASSWORD RESET ROUTE */}
           <Route path="/reset-password" element={<ResetPassword />} />
 
           {/* PROTECTED / APP ROUTES */}
           <Route element={<Layout />}>
             <Route path="/dashboard" element={<Dashboard />} />
-            <Route path="/sos" element={<SOS />} />
+            
+            {/* NEW CONSOLIDATED SAFETY CENTER ROUTE (Replaces /sos and /safety) */}
+            <Route path="/safety-center" element={<SafetyCenter />} />
+            
             <Route path="/shelters" element={<Shelters />} />
             <Route path="/missing" element={<MissingPersons />} />
             <Route path="/resources" element={<Resources />} />
             <Route path="/alerts" element={<Alerts />} />
             <Route path="/first-aid" element={<FirstAid />} />
-            <Route path="/safety" element={<SafetyCheck />} />
+            
+            {/* PROFILE / SAFETY CIRCLE ROUTE */}
+            <Route path="/profile" element={<Profile />} />
+            
+            {/* ADMIN ROUTE */}
+            <Route path="/admin" element={<AdminPage />} />
           </Route>
 
           {/* 404 */}

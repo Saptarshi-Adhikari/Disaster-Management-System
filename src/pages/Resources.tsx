@@ -1,4 +1,17 @@
 import { useEffect, useState } from "react";
+import { db, auth } from "@/firebase/firebase";
+import { onAuthStateChanged, User } from "firebase/auth";
+import { 
+  collection, 
+  query, 
+  where, 
+  onSnapshot, 
+  addDoc, 
+  updateDoc, 
+  doc, 
+  Timestamp, 
+  deleteDoc 
+} from "firebase/firestore";
 import {
   Heart,
   Search,
@@ -8,7 +21,7 @@ import {
   Check,
   Trash2,
   RotateCcw,
-  AlertCircle,
+  Loader2,
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -22,7 +35,6 @@ import {
   DialogHeader,
   DialogTitle,
   DialogTrigger,
-  DialogFooter,
 } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -32,6 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Label } from "@/components/ui/label"; // Added for better form labeling
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -48,65 +61,26 @@ interface Resource {
   location: string;
   postedBy: string;
   contact: string;
-  postedAt: Date;
+  postedAt: any;
   status: ResourceStatus;
   urgent?: boolean;
 }
 
-const STORAGE_KEY = "wb-resources-data";
-
-const categories = [
-  "All",
-  "Water",
-  "Food",
-  "Medical",
-  "Shelter",
-  "Clothing",
-  "Transportation",
-  "Other",
-];
-
-const initialResources: Resource[] = [
-  {
-    id: "1",
-    type: "offer",
-    category: "Water",
-    title: "Bottled Water - 50 Cases",
-    description: "Clean drinking water. Delivery available.",
-    quantity: "50",
-    location: "Salt Lake City",
-    postedBy: "Local Grocery Store",
-    contact: "7029786817",
-    postedAt: new Date(Date.now() - 30 * 60000),
-    status: "available",
-  },
-];
+const categories = ["All", "Water", "Food", "Medical", "Shelter", "Clothing", "Transportation", "Other"];
+const ADMIN_PHONE = "+917029786817";
 
 export default function Resources() {
   const { toast } = useToast();
-
   const [tab, setTab] = useState<"all" | ResourceType>("all");
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState("All");
   const [open, setOpen] = useState(false);
-  const [resetTarget, setResetTarget] = useState<Resource | null>(null);
-
-  const [resources, setResources] = useState<Resource[]>(() => {
-    if (typeof window === "undefined") return initialResources;
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (!saved) return initialResources;
-    try {
-      return JSON.parse(saved).map((r: any) => ({
-        ...r,
-        postedAt: new Date(r.postedAt),
-      }));
-    } catch {
-      return initialResources;
-    }
-  });
+  const [resources, setResources] = useState<Resource[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [currentUser, setCurrentUser] = useState<User | null>(null);
 
   const [form, setForm] = useState({
-    type: "offer",
+    type: "offer" as ResourceType,
     category: "",
     title: "",
     description: "",
@@ -116,73 +90,99 @@ export default function Resources() {
   });
 
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(resources));
-  }, [resources]);
+    const unsub = onAuthStateChanged(auth, (user) => setCurrentUser(user));
+    return () => unsub();
+  }, []);
 
-  const postResource = () => {
-    if (!form.title || !form.category || !form.contact) {
-      toast({
-        title: "Missing Fields",
-        description: "Title, category and contact are required.",
-        variant: "destructive",
+  useEffect(() => {
+    const q = query(
+      collection(db, "resources"),
+      where("status_approval", "==", "approved")
+    );
+
+    const unsubscribe = onSnapshot(q, (snapshot) => {
+      const data = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data()
+      })) as Resource[];
+      setResources(data);
+      setLoading(false);
+    });
+
+    return () => unsubscribe();
+  }, []);
+
+  const postResource = async () => {
+    // MANDATORY FIELD CHECK
+    if (!form.contact.trim()) {
+      toast({ 
+        title: "Phone Number Required", 
+        description: "Please provide a contact number so people can reach you.",
+        variant: "destructive" 
       });
       return;
     }
 
-    setResources((r) => [
-      {
-        id: Date.now().toString(),
-        postedBy: "Community Member",
-        postedAt: new Date(),
-        status: "available",
-        ...form,
-        quantity: form.quantity || "0",
-      } as Resource,
-      ...r,
-    ]);
+    if (!form.title || !form.category) {
+      toast({ title: "Missing Fields", variant: "destructive" });
+      return;
+    }
 
-    setForm({
-      type: "offer",
-      category: "",
-      title: "",
-      description: "",
-      location: "",
-      quantity: "",
-      contact: "",
-    });
-    setOpen(false);
-    toast({ title: "Posted Successfully" });
+    try {
+      await addDoc(collection(db, "resources"), {
+        ...form,
+        postedBy: "Community Member",
+        postedAt: Timestamp.now(),
+        status: "available",
+        status_approval: "pending",
+        quantity: form.quantity || "0",
+      });
+
+      setForm({ type: "offer", category: "", title: "", description: "", location: "", quantity: "", contact: "" });
+      setOpen(false);
+      toast({ title: "Submitted", description: "Listing will appear after admin verification." });
+    } catch (e) {
+      toast({ title: "Error", variant: "destructive" });
+    }
   };
 
-  const updateStatus = (id: string, status: ResourceStatus) =>
-    setResources((r) =>
-      r.map((x) => (x.id === id ? { ...x, status } : x))
-    );
+  const updateStatus = async (id: string, status: ResourceStatus) => {
+    try {
+      await updateDoc(doc(db, "resources", id), { status });
+      toast({ title: "Status Updated" });
+    } catch (e) {
+      toast({ title: "Error updating status", variant: "destructive" });
+    }
+  };
 
-  const deleteResource = (id: string) =>
-    setResources((r) => r.filter((x) => x.id !== id));
+  const deleteResource = async (id: string) => {
+    if (!confirm("Are you sure you want to delete this listing?")) return;
+    try {
+      await deleteDoc(doc(db, "resources", id));
+      toast({ title: "Listing Deleted" });
+    } catch (e) {
+      toast({ title: "Error deleting", variant: "destructive" });
+    }
+  };
 
   const filtered = resources.filter((r) => {
     const tabOk = tab === "all" || r.type === tab;
-    const searchOk =
-      r.title.toLowerCase().includes(search.toLowerCase()) ||
-      r.description.toLowerCase().includes(search.toLowerCase());
+    const searchOk = r.title.toLowerCase().includes(search.toLowerCase()) || r.description.toLowerCase().includes(search.toLowerCase());
     const categoryOk = category === "All" || r.category === category;
     return tabOk && searchOk && categoryOk;
   });
 
+  const isAdmin = currentUser?.phoneNumber === ADMIN_PHONE;
+
   return (
     <div className="space-y-6 pb-10">
-      {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:justify-between">
         <div>
           <h1 className="flex items-center gap-2 text-2xl font-bold">
             <Heart className="h-8 w-8 text-primary" />
             Resource Matchmaker
           </h1>
-          <p className="mt-1 text-muted-foreground">
-            Connect donors with those in need
-          </p>
+          <p className="mt-1 text-muted-foreground">Connect donors with those in need</p>
         </div>
 
         <Dialog open={open} onOpenChange={setOpen}>
@@ -193,245 +193,106 @@ export default function Resources() {
             </Button>
           </DialogTrigger>
 
-          <DialogContent>
-            <DialogHeader>
-              <DialogTitle>Post a Resource</DialogTitle>
-            </DialogHeader>
-
-            <div className="space-y-3">
-              <Select
-                onValueChange={(v) =>
-                  setForm((prev) => ({ ...prev, type: v as ResourceType }))
-                }
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="offer">I want to donate</SelectItem>
-                  <SelectItem value="request">I need help</SelectItem>
-                </SelectContent>
+          <DialogContent className="bg-slate-900 text-white border-slate-800">
+            <DialogHeader><DialogTitle>Post a Resource</DialogTitle></DialogHeader>
+            <div className="space-y-4 pt-4">
+              <Select onValueChange={(v) => setForm({ ...form, type: v as ResourceType })}>
+                <SelectTrigger className="bg-slate-800 border-slate-700"><SelectValue placeholder="Type" /></SelectTrigger>
+                <SelectContent><SelectItem value="offer">I want to donate</SelectItem><SelectItem value="request">I need help</SelectItem></SelectContent>
+              </Select>
+              
+              <Select onValueChange={(v) => setForm({ ...form, category: v })}>
+                <SelectTrigger className="bg-slate-800 border-slate-700"><SelectValue placeholder="Category" /></SelectTrigger>
+                <SelectContent>{categories.filter(c => c !== "All").map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
 
-              <Select
-                onValueChange={(v) => setForm((prev) => ({ ...prev, category: v }))}
-              >
-                <SelectTrigger>
-                  <SelectValue placeholder="Category" />
-                </SelectTrigger>
-                <SelectContent>
-                  {categories
-                    .filter((c) => c !== "All")
-                    .map((c) => (
-                      <SelectItem key={c} value={c}>
-                        {c}
-                      </SelectItem>
-                    ))}
-                </SelectContent>
-              </Select>
+              <Input placeholder="Title" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="bg-slate-800 border-slate-700" />
+              
+              <div className="grid grid-cols-2 gap-2">
+                <Input placeholder="Location" value={form.location} onChange={(e) => setForm({...form, location: e.target.value})} className="bg-slate-800 border-slate-700" />
+                <Input placeholder="Quantity" value={form.quantity} onChange={(e) => setForm({...form, quantity: e.target.value})} className="bg-slate-800 border-slate-700" />
+              </div>
 
-              {["title", "location", "quantity", "contact"].map((f) => (
-                <Input
-                  key={f}
-                  placeholder={f[0].toUpperCase() + f.slice(1)}
-                  // Set types for numeric fields
-                  type={f === "quantity" || f === "contact" ? "tel" : "text"}
-                  value={(form as any)[f]}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    
-                    // Numeric Restriction for Quantity and Contact
-                    if (f === "quantity" || f === "contact") {
-                      // Only allow digits, prevent spaces/special chars
-                      if (val !== "" && !/^\d+$/.test(val)) return;
-                      // Optional: prevent excessive length
-                      if (f === "contact" && val.length > 12) return;
-                    }
-
-                    setForm((prev) => ({ ...prev, [f]: val }));
-                  }}
+              {/* MANDATORY PHONE FIELD */}
+              <div className="space-y-1.5">
+                <Label className="text-xs text-slate-400">Contact Phone <span className="text-rose-500">*</span></Label>
+                <Input 
+                  placeholder="e.g. +91XXXXXXXXXX" 
+                  type="tel" 
+                  value={form.contact} 
+                  onChange={(e) => setForm({...form, contact: e.target.value})} 
+                  className="bg-slate-800 border-slate-700 ring-offset-slate-900 focus-visible:ring-emerald-500" 
                 />
-              ))}
+              </div>
 
-              <Textarea
-                placeholder="Details"
-                value={form.description}
-                onChange={(e) =>
-                  setForm((prev) => ({ ...prev, description: e.target.value }))
-                }
-              />
-
-              <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={postResource}>
-                Post Listing
-              </Button>
+              <Textarea placeholder="Details" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="bg-slate-800 border-slate-700" />
+              
+              <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={postResource}>Submit Listing</Button>
             </div>
           </DialogContent>
         </Dialog>
       </div>
 
-      {/* Filters */}
       <Tabs defaultValue="all" onValueChange={(v) => setTab(v as any)}>
+        {/* ... Tab structure remains the same ... */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row">
-          <TabsList>
-            <TabsTrigger value="all">All</TabsTrigger>
-            <TabsTrigger value="offer">Offers</TabsTrigger>
-            <TabsTrigger value="request">Requests</TabsTrigger>
-          </TabsList>
-
+          <TabsList><TabsTrigger value="all">All</TabsTrigger><TabsTrigger value="offer">Offers</TabsTrigger><TabsTrigger value="request">Requests</TabsTrigger></TabsList>
           <div className="flex flex-1 gap-3">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input
-                placeholder="Search resources..."
-                className="pl-10"
-                value={search}
-                onChange={(e) => setSearch(e.target.value)}
-              />
+              <Input placeholder="Search..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
-
-            <Select value={category} onValueChange={setCategory}>
-              <SelectTrigger className="w-[140px]">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {categories.map((c) => (
-                  <SelectItem key={c} value={c}>
-                    {c}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
           </div>
         </div>
 
-        {/* Cards */}
-        <div className="grid gap-4 md:grid-cols-2">
-          {filtered.map((r) => (
-            <Card
-              key={r.id}
-              className={cn(
-                "border-l-4 shadow-sm",
-                r.urgent
-                  ? "border-l-rose-500 bg-rose-500/5"
-                  : "border-l-primary"
-              )}
-            >
-              <CardContent className="p-5">
-                <div className="mb-3 flex justify-between">
+        {loading ? (
+          <div className="flex justify-center py-10"><Loader2 className="animate-spin h-8 w-8 text-emerald-500" /></div>
+        ) : (
+          <div className="grid gap-4 md:grid-cols-2">
+            {filtered.map((r) => (
+              <Card key={r.id} className={cn("border-l-4 shadow-sm bg-card/40 backdrop-blur-sm", r.urgent ? "border-l-rose-500" : "border-l-emerald-500")}>
+                <CardContent className="p-5">
+                  <div className="mb-3 flex justify-between">
+                    <div className="flex gap-2">
+                      <Badge className="capitalize">{r.type}</Badge>
+                      <Badge variant="outline">{r.category}</Badge>
+                    </div>
+                    {r.status === "matched" && <Badge className="bg-emerald-500"><Check className="mr-1 h-3 w-3" />Matched</Badge>}
+                  </div>
+                  <h3 className="text-lg font-bold">{r.title}</h3>
+                  <p className="my-3 text-sm text-muted-foreground line-clamp-2 italic">"{r.description}"</p>
+                  
+                  <div className="mb-4 space-y-1.5 text-sm text-muted-foreground">
+                    <div className="flex gap-2"><MapPin className="h-3.5 w-3.5 text-primary" />{r.location}</div>
+                    <div className="flex gap-2 font-medium"><Badge variant="secondary" className="text-[10px] h-5">Qty: {r.quantity}</Badge></div>
+                    <div className="flex gap-2"><Phone className="h-3.5 w-3.5 text-primary" />{r.contact}</div>
+                  </div>
+
                   <div className="flex gap-2">
-                    <Badge className="capitalize">{r.type}</Badge>
-                    <Badge variant="outline">{r.category}</Badge>
-                  </div>
-                  {r.status === "matched" && (
-                    <Badge className="bg-emerald-500">
-                      <Check className="mr-1 h-3 w-3" />
-                      Matched
-                    </Badge>
-                  )}
-                </div>
-
-                <h3 className="text-lg font-bold">{r.title}</h3>
-                <p className="my-3 text-sm text-muted-foreground line-clamp-2">
-                  {r.description}
-                </p>
-
-                <div className="mb-4 space-y-1.5 text-sm text-muted-foreground">
-                  <div className="flex gap-2">
-                    <MapPin className="h-3.5 w-3.5 text-primary" />
-                    {r.location}
-                  </div>
-                  <div className="flex gap-2 font-medium">
-                    <Badge variant="secondary" className="text-[10px] h-5">
-                      Qty: {r.quantity}
-                    </Badge>
-                  </div>
-                  <div className="flex gap-2">
-                    <Phone className="h-3.5 w-3.5 text-primary" />
-                    {r.contact}
-                  </div>
-                </div>
-
-                <div className="flex gap-2">
-                  <Button size="sm" className="flex-1" asChild>
-                    <a href={`tel:${r.contact}`}>
-                      <Phone className="mr-2 h-4 w-4" />
-                      Call Now
-                    </a>
-                  </Button>
-
-                  {r.status === "matched" ? (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      className="text-amber-600 border-amber-200"
-                      onClick={() => setResetTarget(r)}
-                    >
-                      <RotateCcw className="mr-2 h-4 w-4" />
-                      Reset
+                    <Button size="sm" className="flex-1" asChild>
+                      <a href={`tel:${r.contact}`}><Phone className="mr-2 h-4 w-4" />Call</a>
                     </Button>
-                  ) : (
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => updateStatus(r.id, "matched")}
-                    >
-                      Mark Matched
-                    </Button>
-                  )}
-
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => deleteResource(r.id)}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                </div>
-              </CardContent>
-            </Card>
-          ))}
-        </div>
+                    
+                    {/* ADMIN-ONLY MARK MATCHED BUTTON */}
+                    {isAdmin && (
+                      <Button size="sm" variant="outline" onClick={() => updateStatus(r.id, r.status === "matched" ? "available" : "matched")}>
+                        {r.status === "matched" ? <RotateCcw className="h-4 w-4" /> : "Mark Matched"}
+                      </Button>
+                    )}
+                    
+                    {/* ADMIN-ONLY DELETE BUTTON */}
+                    {isAdmin && (
+                      <Button size="icon" variant="ghost" className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10" onClick={() => deleteResource(r.id)}>
+                        <Trash2 className="h-4 w-4" />
+                      </Button>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
       </Tabs>
-
-      {/* Reset Confirmation Dialog */}
-      <Dialog
-        open={!!resetTarget}
-        onOpenChange={(o) => !o && setResetTarget(null)}
-      >
-        <DialogContent>
-          <DialogHeader>
-            <div className="mb-2 flex items-center gap-2 text-amber-600">
-              <AlertCircle className="h-5 w-5" />
-              <DialogTitle>Reset Status?</DialogTitle>
-            </div>
-          </DialogHeader>
-
-          <p className="text-sm text-muted-foreground">
-            Reset <strong>{resetTarget?.title}</strong> back to active?
-          </p>
-
-          <DialogFooter>
-            <Button variant="ghost" onClick={() => setResetTarget(null)}>
-              Cancel
-            </Button>
-            <Button
-              className="bg-amber-600 hover:bg-amber-700"
-              onClick={() => {
-                if (!resetTarget) return;
-                updateStatus(
-                  resetTarget.id,
-                  resetTarget.type === "offer"
-                    ? "available"
-                    : "pending"
-                );
-                setResetTarget(null);
-              }}
-            >
-              Confirm
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
