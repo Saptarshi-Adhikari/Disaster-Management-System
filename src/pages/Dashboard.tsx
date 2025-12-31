@@ -1,42 +1,55 @@
 /**
- * Dashboard.tsx - DYNAMIC INTEGRATION
+ * Dashboard.tsx - DYNAMIC INTEGRATION WITH LIVE FEEDS
  */
-import { AlertTriangle, Users, Home, Heart, TrendingUp, Activity } from "lucide-react";
+import { useState, useEffect } from "react";
+import { AlertTriangle, Users, Home, Heart, TrendingUp, Activity, RefreshCw } from "lucide-react";
 import { StatusCard } from "@/components/dashboard/StatusCard";
 import { AlertsFeed, Alert } from "@/components/dashboard/AlertsFeed";
 import { ShelterMap, Shelter } from "@/components/dashboard/ShelterMap";
 import { QuickActions } from "@/components/dashboard/QuickActions";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 
-// ---- DATA SOURCE ----
-// These match the 'Alert' and 'Shelter' interfaces we added to the components
-const MOCK_ALERTS: Alert[] = [
-  {
-    id: "1",
-    type: "critical",
-    title: "Flash Flood Warning",
-    message: "Immediate evacuation required for Zone A residents",
-    time: "2 min ago",
-    location: "Downtown District",
-  },
-  {
-    id: "2",
-    type: "warning",
-    title: "Power Outage",
-    message: "Grid failure affecting 5,000+ homes in the northern sector",
-    time: "15 min ago",
-    location: "North Sector",
-  },
-  {
-    id: "3",
-    type: "info",
-    title: "Shelter Opening",
-    message: "Central Community Center now accepting evacuees",
-    time: "32 min ago",
-    location: "Central Area",
-  },
-];
+// --- LIVE DATA FETCHING LOGIC ---
+const fetchLiveAlerts = async (): Promise<Alert[]> => {
+  try {
+    const RSS_URL = `https://news.google.com/rss/search?q=West+Bengal+emergency+alerts+breaking+news&hl=en-IN&gl=IN&ceid=IN:en`;
+    const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(RSS_URL)}`);
+    const data = await response.json();
 
+    const cleanHTML = (html: string) => {
+      const doc = new DOMParser().parseFromString(html, 'text/html');
+      const text = doc.body.textContent || "";
+      return text.replace(/<[^>]*>?/gm, '').trim(); 
+    };
+
+    return (data.items || []).slice(0, 5).map((item: any) => {
+      const title = item.title.split(" - ")[0];
+      const description = cleanHTML(item.description);
+      
+      let type: "critical" | "warning" | "info" = "info";
+      const criticalKeywords = ["accident", "death", "fire", "killed", "blast", "emergency", "flood"];
+      const warningKeywords = ["alert", "warning", "delay", "traffic", "weather", "rain"];
+      
+      if (criticalKeywords.some(k => title.toLowerCase().includes(k))) type = "critical";
+      else if (warningKeywords.some(k => title.toLowerCase().includes(k))) type = "warning";
+
+      return {
+        id: item.link,
+        type: type,
+        title: title,
+        message: description.slice(0, 100) + "...",
+        time: new Date(item.pubDate).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        location: "West Bengal",
+      };
+    });
+  } catch (error) {
+    console.error("Fetch error:", error);
+    return [];
+  }
+};
+
+// --- STATIC DATA ---
 const MOCK_SHELTERS: Shelter[] = [
   {
     id: "1",
@@ -68,9 +81,25 @@ const MOCK_SHELTERS: Shelter[] = [
 ];
 
 export default function Dashboard() {
+  const [alerts, setAlerts] = useState<Alert[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
   // --- INTEGRATION LOGIC ---
-  const activeAlertsCount = MOCK_ALERTS.length;
-  const criticalAlertsCount = MOCK_ALERTS.filter(a => a.type === 'critical').length;
+  const loadData = async () => {
+    setIsLoading(true);
+    const liveData = await fetchLiveAlerts();
+    setAlerts(liveData);
+    setIsLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 300000); // Refresh every 5 mins
+    return () => clearInterval(interval);
+  }, []);
+
+  const activeAlertsCount = alerts.length;
+  const criticalAlertsCount = alerts.filter(a => a.type === 'critical').length;
   
   const totalShelters = MOCK_SHELTERS.length;
   const openShelters = MOCK_SHELTERS.filter(s => s.status === 'open').length;
@@ -87,10 +116,22 @@ export default function Dashboard() {
             Real-time disaster monitoring and response coordination
           </p>
         </div>
-        <Badge variant="outline" className="gap-2 w-fit">
-          <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
-          Active Event: Flash Flood
-        </Badge>
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={loadData} 
+            disabled={isLoading}
+            className="gap-2"
+          >
+            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            Refresh
+          </Button>
+          <Badge variant="outline" className="gap-2 w-fit">
+            <span className="w-2 h-2 bg-red-500 rounded-full animate-pulse" />
+            Active Event: Live Feed
+          </Badge>
+        </div>
       </div>
 
       {/* SECTION 2: STATUS CARDS */}
@@ -98,7 +139,7 @@ export default function Dashboard() {
         <StatusCard
           icon={AlertTriangle}
           title="Active Alerts"
-          value={activeAlertsCount}
+          value={isLoading ? "..." : activeAlertsCount}
           subtitle={`${criticalAlertsCount} critical`}
           variant="warning"
           trend="up"
@@ -135,8 +176,8 @@ export default function Dashboard() {
       {/* SECTION 3: ALERTS FEED & ACTIONS */}
       <div className="grid gap-6 lg:grid-cols-3">
         <div className="lg:col-span-2">
-          {/* Note: Prop name is 'alerts' to match your updated AlertsFeed.tsx */}
-          <AlertsFeed alerts={MOCK_ALERTS} />
+          <AlertsFeed alerts={alerts} />
+          {isLoading && <p className="text-xs text-center mt-2 text-muted-foreground animate-pulse">Updating live regional data...</p>}
         </div>
         <div>
           <QuickActions />
@@ -145,7 +186,6 @@ export default function Dashboard() {
 
       {/* SECTION 4: SHELTER MAP & STATS */}
       <div className="grid gap-6 lg:grid-cols-2">
-        {/* Note: Prop name is 'shelters' to match your updated ShelterMap.tsx */}
         <ShelterMap shelters={MOCK_SHELTERS} />
         
         <div className="space-y-4">
