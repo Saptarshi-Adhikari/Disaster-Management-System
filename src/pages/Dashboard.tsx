@@ -1,11 +1,11 @@
 /**
- * Dashboard.tsx - PROXIMITY FILTERING, LIVE DATA, CACHED AQI, PM2.5, TEMP & TOOLTIPS
+ * Dashboard.tsx - RESTORED CARD DETAILS (Critical Count, Dynamic Radius, Total Matched)
  */
-import { useState, useEffect } from "react";
+import { useState, useEffect, useCallback } from "react";
 import { 
   AlertTriangle, Users, Home, Heart, TrendingUp, 
   Activity, RefreshCw, MapPin, NavigationOff, Wind, 
-  Thermometer, HelpCircle // Added Thermometer icon
+  Thermometer, Settings2, Phone 
 } from "lucide-react";
 import { StatusCard } from "@/components/dashboard/StatusCard";
 import { AlertsFeed, Alert } from "@/components/dashboard/AlertsFeed";
@@ -14,12 +14,8 @@ import { QuickActions } from "@/components/dashboard/QuickActions";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Slider } from "@/components/ui/slider";
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from "@/components/ui/tooltip";
+import { TooltipProvider } from "@/components/ui/tooltip";
+import { toast } from "sonner";
 
 // LIVE INTEGRATIONS
 import { db } from "@/firebase/firebase"; 
@@ -32,15 +28,13 @@ export default function Dashboard() {
   const [resourceCount, setResourceCount] = useState<number>(0);
   const [aqi, setAqi] = useState<{ value: number; label: string; color: string } | null>(null);
   const [pm25, setPm25] = useState<{ value: number; color: string } | null>(null);
-  const [temp, setTemp] = useState<number | null>(null); // Added temperature state
+  const [temp, setTemp] = useState<number | null>(null); 
   const [isLoading, setIsLoading] = useState(true);
 
-  // Location & Radius State
   const [userCoords, setUserCoords] = useState<{lat: number, lng: number} | null>(null);
   const [radius, setRadius] = useState<number>(50); 
   const [locationStatus, setLocationStatus] = useState<"loading" | "granted" | "denied">("loading");
 
-  // Helper: Haversine Formula for Distance Calculation
   const getDistance = (lat1: number, lon1: number, lat2: number, lon2: number) => {
     const R = 6371; 
     const dLat = (lat2 - lat1) * Math.PI / 180;
@@ -51,127 +45,66 @@ export default function Dashboard() {
     return R * c; 
   };
 
-  // --- SMART WEATHER DATA FETCH WITH 5-MINUTE CACHING ---
   const fetchAqiData = async (lat: number, lng: number) => {
-    const CACHE_KEY = "weather_data_v5"; 
-    const CACHE_TIME_KEY = "weather_timestamp_v5";
-    const FIVE_MINUTES = 5 * 60 * 1000;
+    const TOKEN = "16cb2690d129561db238c7bf06a5719124f575a3"; 
+    try {
+      const response = await fetch(`https://api.waqi.info/feed/geo:${lat};${lng}/?token=${TOKEN}`);
+      const result = await response.json();
+      if (result.status === "ok") {
+        const aqiVal = result.data.aqi;
+        let label = "Good"; let color = "bg-green-500";
+        if (aqiVal > 150) { label = "Unhealthy"; color = "bg-red-500"; }
+        else if (aqiVal > 50) { label = "Moderate"; color = "bg-yellow-500"; }
+        setAqi({ value: aqiVal, label, color });
+        setPm25({ value: result.data.iaqi?.pm25?.v, color: "text-primary" });
+        setTemp(result.data.iaqi?.t?.v);
+      }
+    } catch (e) { console.error(e); }
+  };
 
-    const cachedData = localStorage.getItem(CACHE_KEY);
-    const cachedTime = localStorage.getItem(CACHE_TIME_KEY);
-    const now = Date.now();
-
-    if (cachedData && cachedTime && (now - parseInt(cachedTime)) < FIVE_MINUTES) {
-      const parsed = JSON.parse(cachedData);
-      setAqi(parsed.aqi);
-      setPm25(parsed.pm25);
-      setTemp(parsed.temp);
+  const handleEnableLocation = () => {
+    if (!navigator.geolocation) {
+      alert("GPS not supported on this device.");
       return;
     }
 
-    try {
-      const TOKEN = "16cb2690d129561db238c7bf06a5719124f575a3"; 
-      const response = await fetch(`https://api.waqi.info/feed/geo:${lat};${lng}/?token=${TOKEN}`);
-      const result = await response.json();
-      
-      if (result.status === "ok") {
-        const aqiVal = result.data.aqi;
-        const pm25Val = result.data.iaqi?.pm25?.v;
-        const tempVal = result.data.iaqi?.t?.v; // Temperature from API
-
-        // AQI Logic
-        let label = "Good";
-        let color = "bg-green-500";
-        if (aqiVal > 300) { label = "Hazardous"; color = "bg-purple-900"; }
-        else if (aqiVal > 200) { label = "Very Unhealthy"; color = "bg-purple-500"; }
-        else if (aqiVal > 150) { label = "Unhealthy"; color = "bg-red-500"; }
-        else if (aqiVal > 100) { label = "Unhealthy for Sensitive"; color = "bg-orange-500"; }
-        else if (aqiVal > 50) { label = "Moderate"; color = "bg-yellow-500"; }
-
-        // PM2.5 Color Logic
-        let pmColor = "text-green-500";
-        if (pm25Val > 55.4) pmColor = "text-red-500";
-        else if (pm25Val > 35.4) pmColor = "text-orange-500";
-        else if (pm25Val > 12.0) pmColor = "text-yellow-500";
-
-        const aqiObject = { value: aqiVal, label, color };
-        const pm25Object = pm25Val ? { value: pm25Val, color: pmColor } : null;
-
-        localStorage.setItem(CACHE_KEY, JSON.stringify({ aqi: aqiObject, pm25: pm25Object, temp: tempVal }));
-        localStorage.setItem(CACHE_TIME_KEY, now.toString());
-        
-        setAqi(aqiObject);
-        setPm25(pm25Object);
-        setTemp(tempVal);
-      }
-    } catch (error) {
-      console.error("Weather Fetch Error:", error);
-    }
+    setLocationStatus("loading");
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        // Success! Update your app state with coordinates
+        console.log(position.coords.latitude, position.coords.longitude);
+        setUserCoords({ lat: position.coords.latitude, lng: position.coords.longitude });
+        setLocationStatus("granted");
+        fetchAqiData(position.coords.latitude, position.coords.longitude);
+      },
+      (error) => {
+        // If this alerts "User denied Geolocation", 
+        // check your phone's App Settings.
+        setLocationStatus("denied");
+        alert("Location Error: " + error.message);
+      },
+      { enableHighAccuracy: true, timeout: 10000 }
+    );
   };
 
-  const loadAlerts = async () => {
-    setIsLoading(true);
-    try {
-      const liveData = await fetchWestBengalNews(""); 
-      const mappedAlerts: Alert[] = liveData.slice(0, 5).map(a => ({
-        id: a.id,
-        type: a.type as any,
-        title: a.title,
-        message: a.message,
-        time: a.time,
-        location: a.location
-      }));
-      setAlerts(mappedAlerts);
-    } catch (error) {
-      console.error("Alert fetch error:", error);
-    } finally {
-      setIsLoading(false);
-    }
-  };
+  const requestLocation = useCallback(() => {
+    handleEnableLocation();
+  }, []);
 
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          const lat = pos.coords.latitude;
-          const lng = pos.coords.longitude;
-          setUserCoords({ lat, lng });
-          setLocationStatus("granted");
-          fetchAqiData(lat, lng); 
-        },
-        () => setLocationStatus("denied")
-      );
-    } else {
-      setLocationStatus("denied");
-    }
-
-    const qShelters = query(collection(db, "shelters"), where("status_approval", "==", "approved"));
-    const unsubShelters = onSnapshot(qShelters, (snapshot) => {
-      const data = snapshot.docs.map((doc) => {
-        const d = doc.data();
-        return {
-          id: doc.id,
-          ...d,
-          amenities: Array.isArray(d.amenities) ? d.amenities : [],
-          distance: d.distance || "N/A",
-        };
-      }) as any[];
-      setShelters(data);
+    requestLocation();
+    const unsubShelters = onSnapshot(query(collection(db, "shelters"), where("status_approval", "==", "approved")), (snap) => {
+      setShelters(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any);
     });
-
-    const qResources = collection(db, "resources");
-    const unsubResources = onSnapshot(qResources, (snapshot) => {
-      setResourceCount(snapshot.size);
-    });
-
-    loadAlerts(); 
-    const interval = setInterval(loadAlerts, 300000); 
-    return () => {
-      unsubShelters();
-      unsubResources();
-      clearInterval(interval);
+    const unsubResources = onSnapshot(collection(db, "resources"), (snap) => setResourceCount(snap.size));
+    const loadAlerts = async () => {
+      const liveData = await fetchWestBengalNews("");
+      setAlerts(liveData.slice(0, 5) as any);
+      setIsLoading(false);
     };
-  }, []);
+    loadAlerts();
+    return () => { unsubShelters(); unsubResources(); };
+  }, [requestLocation]);
 
   const nearbyShelters = shelters.map(s => {
     if (userCoords && s.coords) {
@@ -182,94 +115,70 @@ export default function Dashboard() {
   }).filter(s => locationStatus !== "granted" || s.rawDist <= radius);
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl md:text-3xl font-bold text-foreground">Emergency Dashboard</h1>
-          <p className="text-muted-foreground mt-1">Real-time disaster monitoring and response coordination</p>
-        </div>
+    <div className="space-y-6 pb-28 md:pb-6 px-3 md:px-0">
+      
+      {/* 1. HEADER */}
+      <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
+  <div> 
+    <h1 className="text-2xl md:text-3xl font-bold text-white tracking-tight leading-none">
+      Emergency Dashboard
+    </h1>
+    <p className="text-slate-400 mt-1.5 text-xs md:text-sm">
+      Real-time disaster monitoring
+    </p>
+  </div>
 
-        {/* WEATHER DATA DISPLAY (AQI, PM2.5, TEMP) */}
-        <TooltipProvider>
-          {aqi && (
-            <div className="flex items-center gap-3 bg-secondary/30 p-2 px-4 rounded-full border border-border/50 animate-in fade-in slide-in-from-top-2">
-              <div className="flex items-center gap-4 text-xs">
-                
-                {/* AQI Tooltip */}
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <div className="flex items-center cursor-help">
-                      <Wind className="h-3 w-3 text-primary mr-2" />
-                      <span className="text-muted-foreground mr-1">AQI: </span>
-                      <span className="font-bold">{aqi.value}</span>
-                      <Badge className={`ml-2 text-[10px] ${aqi.color}`}>{aqi.label}</Badge>
-                    </div>
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p className="text-xs font-semibold">Air Quality Index</p>
-                    <p className="text-[10px] text-muted-foreground max-w-[200px]">General score of air health. Higher is more dangerous.</p>
-                  </TooltipContent>
-                </Tooltip>
-                
-                {/* PM2.5 Tooltip */}
-                {pm25 && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center border-l border-border/50 pl-4 cursor-help">
-                        <span className="text-muted-foreground mr-1">PM2.5: </span>
-                        <span className={`font-bold ${pm25.color}`}>
-                          {pm25.value} <span className="text-[10px] font-normal opacity-70">µg/m³</span>
-                        </span>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs font-semibold">Fine Particles (PM2.5)</p>
-                      <p className="text-[10px] text-muted-foreground max-w-[200px]">Microscopic dust/smoke that can enter the lungs and bloodstream.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-
-                {/* Temperature Tooltip */}
-                {temp !== null && (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <div className="flex items-center border-l border-border/50 pl-4 cursor-help">
-                        <Thermometer className="h-3 w-3 text-orange-400 mr-2" />
-                        <span className="text-muted-foreground mr-1">Temp: </span>
-                        <span className="font-bold">{temp}°C</span>
-                      </div>
-                    </TooltipTrigger>
-                    <TooltipContent>
-                      <p className="text-xs font-semibold">Local Temperature</p>
-                      <p className="text-[10px] text-muted-foreground">Ambient temperature in your immediate area.</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
+        {/* Weather Chips */}
+        <div className="flex items-center gap-2 overflow-x-auto no-scrollbar pb-1 md:pb-0">
+          <TooltipProvider>
+            {aqi && (
+              <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 px-3 rounded-full border border-slate-700 shrink-0">
+                <Wind className="h-3.5 w-3.5 text-primary" />
+                <span className="text-[11px] font-bold text-white">{aqi.value} AQI</span>
+                <Badge className={`text-[9px] h-4 px-1 ${aqi.color}`}>{aqi.label}</Badge>
               </div>
-            </div>
-          )}
-        </TooltipProvider>
-
-        <div className="flex items-center gap-3">
-          <Button variant="outline" size="sm" onClick={loadAlerts} disabled={isLoading} className="gap-2">
-            <RefreshCw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-            Refresh
+            )}
+            {pm25 && (
+              <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 px-3 rounded-full border border-slate-700 shrink-0">
+                <Activity className="h-3.5 w-3.5 text-blue-400" />
+                <span className="text-[11px] font-medium text-slate-400">PM2.5: <span className="text-white font-bold">{pm25.value}</span></span>
+              </div>
+            )}
+            {temp !== null && (
+              <div className="flex items-center gap-2 bg-slate-800/50 p-1.5 px-3 rounded-full border border-slate-700 shrink-0">
+                <Thermometer className="h-3.5 w-3.5 text-orange-400" />
+                <span className="text-[11px] font-bold text-white">{temp}°C</span>
+              </div>
+            )}
+          </TooltipProvider>
+          <Button variant="outline" size="sm" onClick={() => window.location.reload()} className="rounded-full shrink-0 h-8 w-8 p-0 border-slate-700">
+            <RefreshCw className={`h-3.5 w-3.5 ${isLoading ? 'animate-spin' : ''}`} />
           </Button>
         </div>
       </div>
 
-      {/* RADIUS CONTROLLER */}
-      <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row md:items-center gap-6">
+      {/* 2. RADIUS CONTROLLER */}
+      <div className="bg-slate-900/40 border border-slate-800 p-4 rounded-xl flex flex-col md:flex-row md:items-center gap-4 md:gap-6">
         <div className="flex items-center gap-3 shrink-0">
-          <div className={`p-2 rounded-lg ${locationStatus === 'denied' ? 'bg-red-500/10' : 'bg-primary/10'}`}>
+          <div className={`p-2.5 rounded-lg ${locationStatus === 'denied' ? 'bg-red-500/10' : 'bg-primary/10'}`}>
             <MapPin className={`h-5 w-5 ${locationStatus === 'denied' ? 'text-red-500' : 'text-primary'}`} />
           </div>
-          <div>
-            <p className="text-xs font-bold uppercase tracking-wider text-slate-500">Search Radius</p>
-            <p className="text-sm font-black text-white">{locationStatus === 'granted' ? `${radius} Kilometers` : 'Location Disabled'}</p>
+          <div className="flex flex-col">
+            <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 leading-none mb-1">Search Radius</p>
+            <p className="text-sm font-black text-white leading-none">
+              {locationStatus === 'granted' ? `${radius} Kilometers` : 'Location Disabled'}
+            </p>
+            {locationStatus === 'denied' && (
+              <button 
+                onClick={handleEnableLocation}
+                className="text-[10px] text-blue-400 font-bold hover:underline flex items-center gap-1 text-left mt-1"
+              >
+                <Settings2 className="h-2.5 w-2.5" /> Enable in App
+              </button>
+            )}
           </div>
         </div>
-        <div className="flex-1 px-2">
+        <div className="flex-1 px-1">
           <Slider 
             disabled={locationStatus !== "granted"}
             value={[radius]} 
@@ -281,44 +190,82 @@ export default function Dashboard() {
         </div>
       </div>
 
-      {/* STATUS CARDS */}
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatusCard icon={AlertTriangle} title="Active Alerts" value={isLoading ? "..." : alerts.length} subtitle={`${alerts.filter(a => a.type === 'critical').length} critical`} variant="warning" />
-        <StatusCard icon={Users} title="People Affected" value="15,234" subtitle="+2,341 today" variant="emergency" />
-        <StatusCard icon={Home} title="Shelters Near You" value={nearbyShelters.length} subtitle={`${radius}km radius`} variant="info" />
-        <StatusCard icon={Heart} title="Resources Matched" value={resourceCount} subtitle="Total matched" variant="safe" />
+      {/* 3. STATUS CARDS - RESTORED SUBTITLES */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <StatusCard 
+          icon={AlertTriangle} 
+          title="Active Alerts" 
+          value={alerts.length} 
+          subtitle={`${alerts.filter(a => a.type === 'critical').length} critical`}
+          variant="warning" 
+        />
+        <StatusCard 
+          icon={Users} 
+          title="People Affected" 
+          value="15.2k" 
+          subtitle="+2,341 today"
+          variant="emergency" 
+        />
+        <StatusCard 
+          icon={Home} 
+          title="Shelters Near You" 
+          value={nearbyShelters.length} 
+          subtitle={`${radius}km radius`}
+          variant="info" 
+        />
+        <StatusCard 
+          icon={Heart} 
+          title="Resources Matched" 
+          value={resourceCount} 
+          subtitle="Total matched"
+          variant="safe" 
+        />
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-3">
-        <div className="lg:col-span-2">
-          <AlertsFeed alerts={alerts} />
+      {/* 4. MAIN FEED */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-3">
+        <div className="lg:col-span-2 order-2 lg:order-1">
+          <div className="bg-slate-900/20 rounded-2xl border border-slate-800/50 overflow-hidden">
+            <AlertsFeed alerts={alerts} />
+          </div>
         </div>
-        <QuickActions />
+        <div className="space-y-6 order-1 lg:order-2">
+          <QuickActions />
+          <div className="hidden lg:block space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                 <StatusCard icon={Activity} title="Rescues" value={47} variant="info" />
+                 <StatusCard icon={TrendingUp} title="Response" value="8m" variant="safe" />
+              </div>
+          </div>
+        </div>
       </div>
 
-      <div className="grid gap-6 lg:grid-cols-2">
-        {locationStatus === "denied" ? (
-          <div className="h-[450px] flex flex-col items-center justify-center border-2 border-dashed border-red-500/20 rounded-3xl bg-red-500/5 p-12 text-center">
-            <div className="bg-red-500/10 p-6 rounded-full mb-6">
-              <NavigationOff className="h-12 w-12 text-red-500" />
+      {/* 5. MAP & EXTRA MOBILE STATS */}
+      <div className="grid gap-6 grid-cols-1 lg:grid-cols-2">
+        <div className="h-[380px] md:h-auto min-h-[450px] rounded-2xl overflow-hidden border border-slate-800/50">
+          {locationStatus === "denied" ? (
+            <div className="h-full flex flex-col items-center justify-center bg-slate-900/40 p-8 text-center">
+              <NavigationOff className="h-12 w-12 text-slate-700 mb-4" />
+              <p className="text-slate-400 text-sm mb-4">Enable GPS to see nearby shelters</p>
+              <Button onClick={handleEnableLocation} size="sm">Enable Map</Button>
             </div>
-            <h3 className="text-xl font-bold text-white">Location Access Denied</h3>
-            <p className="text-slate-400 max-w-xs mt-2 text-sm">
-              We cannot calculate nearby shelters, AQI, or Weather without GPS.
-            </p>
-            <Button variant="outline" className="mt-6 border-red-500/50 text-red-500 hover:bg-red-500/10" onClick={() => window.location.reload()}>
-              Retry Connection
-            </Button>
-          </div>
-        ) : (
-          <ShelterMap shelters={nearbyShelters} />
-        )}
-        <div className="space-y-4">
-          <div className="grid gap-4 sm:grid-cols-2">
-            <StatusCard icon={Activity} title="Active Rescues" value={47} variant="info" />
-            <StatusCard icon={TrendingUp} title="Response Time" value="8 min" variant="safe" />
-          </div>
+          ) : (
+            <ShelterMap shelters={nearbyShelters} />
+          )}
         </div>
+        
+        <div className="grid grid-cols-2 gap-4 lg:hidden">
+            <StatusCard icon={Activity} title="Rescues" value={47} variant="info" />
+            <StatusCard icon={TrendingUp} title="Response" value="8m" variant="safe" />
+        </div>
+      </div>
+
+      {/* 6. EMERGENCY BUTTON */}
+      <div className="fixed bottom-0 left-0 right-0 p-4 bg-gradient-to-t from-black via-black/80 to-transparent md:hidden z-50">
+        <Button className="w-full h-14 rounded-2xl bg-red-600 hover:bg-red-700 shadow-2xl text-lg font-bold gap-3 border-t border-white/10 active:scale-95 transition-transform">
+          <Phone className="h-6 w-6 fill-current" />
+          EMERGENCY 100
+        </Button>
       </div>
     </div>
   );

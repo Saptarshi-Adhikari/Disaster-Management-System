@@ -15,7 +15,9 @@ import {
   LogOut,
   User as UserIcon,
   ShieldCheck,
-  Zap // Icon for Safety Center
+  Zap,
+  Activity,
+  Wind
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -27,7 +29,6 @@ import { doc, onSnapshot } from "firebase/firestore";
 const navItems = [
   { icon: Home, label: "Dashboard", path: "/dashboard" },
   { icon: ShieldCheck, label: "Safety Circle", path: "/profile" },
-  // Unified Safety Center replacing the two individual links
   { icon: Zap, label: "Safety Center", path: "/safety-center" }, 
   { icon: MapPin, label: "Shelter Finder", path: "/shelters" },
   { icon: Users, label: "Missing Persons", path: "/missing" },
@@ -47,12 +48,17 @@ export function Sidebar() {
   const { pathname } = useLocation();
   const navigate = useNavigate();
 
+  // Automatically close sidebar on mobile when a tab is clicked
+  const handleItemClick = () => {
+    if (window.innerWidth < 768) {
+      setIsOpen(false);
+    }
+  };
+
   useEffect(() => {
     const unsubscribeAuth = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
-
       if (currentUser) {
-        // Real-time listener for the user's Firestore document
         const userDocRef = doc(db, "users", currentUser.uid);
         const unsubscribeDoc = onSnapshot(userDocRef, (docSnap) => {
           if (docSnap.exists()) {
@@ -66,13 +72,13 @@ export function Sidebar() {
         return () => unsubscribeDoc();
       }
     });
-
     return () => unsubscribeAuth();
   }, []);
 
   const handleLogout = async () => {
     try {
       await signOut(auth);
+      handleItemClick();
       navigate("/login");
     } catch (error) {
       console.error("Logout error:", error);
@@ -81,15 +87,23 @@ export function Sidebar() {
 
   return (
     <>
+      {/* MODIFIED BUTTON: 
+          Added 'opacity-0 pointer-events-none' when isOpen is true.
+          This hides the hamburger menu icon completely when the sidebar is open.
+      */}
       <Button
         variant="ghost"
         size="icon"
-        className="fixed left-4 top-4 z-50 md:hidden bg-background/50 backdrop-blur"
-        onClick={() => setIsOpen((v) => !v)}
+        className={cn(
+          "fixed left-4 top-4 z-50 md:hidden bg-background/50 backdrop-blur border border-white/10 transition-opacity duration-200",
+          isOpen ? "opacity-0 pointer-events-none" : "opacity-100"
+        )}
+        onClick={() => setIsOpen(true)}
       >
-        {isOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
+        <Menu className="h-5 w-5" />
       </Button>
 
+      {/* Clicking the backdrop will close the menu */}
       {isOpen && (
         <div
           className="fixed inset-0 z-40 bg-background/80 backdrop-blur-sm md:hidden"
@@ -122,7 +136,7 @@ export function Sidebar() {
                 <Link
                   key={path}
                   to={path}
-                  onClick={() => setIsOpen(false)}
+                  onClick={handleItemClick}
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm font-medium transition",
                     isActive
@@ -142,6 +156,7 @@ export function Sidebar() {
               <div className="space-y-3">
                 <Link 
                   to="/profile" 
+                  onClick={handleItemClick}
                   className="flex items-center gap-3 p-2 bg-background/50 rounded-xl border border-border/50 hover:border-blue-500/50 transition-colors group"
                 >
                   <div className="h-9 w-9 rounded-lg bg-blue-600/20 flex items-center justify-center border border-blue-500/30 group-hover:bg-blue-600/40 overflow-hidden">
@@ -173,10 +188,10 @@ export function Sidebar() {
               </div>
             ) : (
               <div className="grid grid-cols-2 gap-2">
-                <Button variant="outline" size="sm" onClick={() => navigate("/login")}>
+                <Button variant="outline" size="sm" onClick={() => {navigate("/login"); handleItemClick();}}>
                    Sign In
                 </Button>
-                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white border-none" onClick={() => navigate("/register")}>
+                <Button size="sm" className="bg-green-600 hover:bg-green-700 text-white border-none" onClick={() => {navigate("/register"); handleItemClick();}}>
                    Sign Up
                 </Button>
               </div>
@@ -186,7 +201,10 @@ export function Sidebar() {
               variant="destructive" 
               size="lg" 
               className="w-full gap-2 font-bold uppercase tracking-wide bg-red-600 hover:bg-red-700 "
-              onClick={() => window.location.href = 'tel:100'}
+              onClick={() => {
+                handleItemClick();
+                window.location.href = 'tel:100';
+              }}
             >
               <Phone className="h-5 w-5" />
               Emergency: 100

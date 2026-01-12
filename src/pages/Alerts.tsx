@@ -82,7 +82,6 @@ export default function Alerts() {
         </div>
         
         <div className="flex flex-wrap items-center gap-3">
-          {/* FIXED DROPDOWN STYLING */}
           <Select value={selectedCity} onValueChange={setSelectedCity}>
             <SelectTrigger className="w-[220px] bg-slate-900 border-slate-700 text-white h-11 focus:ring-red-500/20">
               <SelectValue placeholder="Select District" />
@@ -115,7 +114,6 @@ export default function Alerts() {
         </div>
       </div>
 
-      {/* SEARCH BAR */}
       <div className="relative group">
         <Search className="absolute left-4 top-1/2 -translate-y-1/2 h-5 w-5 text-slate-500 group-focus-within:text-red-500 transition-colors" />
         <Input 
@@ -148,7 +146,6 @@ export default function Alerts() {
           </TabsList>
 
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8">
-            {/* ALERT LIST */}
             <div className="lg:col-span-5 space-y-4">
               <div className="flex items-center justify-between opacity-60">
                 <span className="text-[10px] font-black uppercase tracking-[0.2em]">Monitoring Hub • {filteredAlerts.length} Active</span>
@@ -158,7 +155,6 @@ export default function Alerts() {
               </div>
             </div>
 
-            {/* DETAIL VIEW */}
             <div className="lg:col-span-7 hidden lg:block">
               {selectedAlert ? (
                 <DetailCard alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
@@ -176,12 +172,21 @@ export default function Alerts() {
         </Tabs>
       )}
 
-      {/* MOBILE OVERLAY */}
+      {/* UPDATED MOBILE OVERLAY */}
       {selectedAlert && (
-        <div className="lg:hidden fixed inset-0 z-[100] bg-black/90 backdrop-blur-md p-4 flex items-end sm:items-center justify-center">
-            <div className="w-full max-w-xl animate-in fade-in slide-in-from-bottom-10">
-                <DetailCard alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
-            </div>
+        <div className="lg:hidden fixed inset-0 z-[99999] flex items-center justify-center p-4">
+          {/* This div uses fixed inset-0 to cover the whole screen. 
+            bg-slate-950/80 provides the dark tint.
+            backdrop-blur-xl provides the heavy blur effect.
+          */}
+          <div 
+            className="fixed inset-0 bg-slate-150/80 backdrop-blur-xl transition-opacity duration-300" 
+            onClick={() => setSelectedAlert(null)}
+          />
+          
+          <div className="relative w-full max-w-xl animate-in fade-in zoom-in duration-200 shadow-2xl z-[100000]">
+            <DetailCard alert={selectedAlert} onClose={() => setSelectedAlert(null)} />
+          </div>
         </div>
       )}
     </div>
@@ -190,16 +195,17 @@ export default function Alerts() {
 
 function DetailCard({ alert, onClose }: { alert: Alert; onClose: () => void }) {
   const config = alertConfig[alert.type];
-  const Icon = config.icon;
 
   return (
-    <Card className="border-slate-700 bg-slate-900/80 shadow-2xl backdrop-blur-xl overflow-hidden rounded-3xl border-t-red-500/40 border-t-2">
+    <Card className="border-slate-700 bg-slate-900/95 shadow-2xl overflow-hidden rounded-3xl border-t-red-500/40 border-t-2">
       <CardHeader className="pb-4">
         <div className="flex justify-between items-start">
           <Badge variant={config.badge} className="px-4 py-1 text-[10px] uppercase font-black rounded-full">{alert.type}</Badge>
-          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-red-500/10 hover:text-red-500">✕</Button>
+          <Button variant="ghost" size="icon" onClick={onClose} className="rounded-full hover:bg-red-500/10 hover:text-red-500">
+            <X className="h-5 w-5" />
+          </Button>
         </div>
-        <CardTitle className="text-2x2 font-black leading-tight mt-4 text-white tracking-tight">{alert.title}</CardTitle>
+        <CardTitle className="text-2xl font-black leading-tight mt-4 text-white tracking-tight">{alert.title}</CardTitle>
       </CardHeader>
       <CardContent className="space-y-6">
         <div className="bg-black/40 p-6 rounded-2xl border border-white/5">
