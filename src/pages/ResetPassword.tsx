@@ -51,8 +51,9 @@ export default function ResetPassword() {
     try {
       await confirmPasswordReset(auth, oobCode!, newPassword);
       setIsSuccess(true);
-    } catch (err: any) {
-      alert(err.message || "Failed to reset password.");
+    } catch (err: unknown) {
+      const error = err as Error;
+      alert(error.message || "Failed to reset password.");
     } finally {
       setIsLoading(false);
     }

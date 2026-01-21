@@ -3,7 +3,8 @@ import {
   FileText, Search, Heart, Droplets, Flame, Wind,
   AlertTriangle, ChevronRight, Clock, CheckCircle,
   BotMessageSquare, Send, Loader2, X, User,
-  RefreshCcw
+  RefreshCcw,
+  type LucideIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
@@ -15,7 +16,7 @@ import { getAIEmergencyResponse } from "@/lib/gemini"; // Import the AI service
 interface FirstAidGuide {
   id: string;
   category: string;
-  icon: any;
+  icon: LucideIcon;
   title: string;
   subtitle: string;
   duration: string;

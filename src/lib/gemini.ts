@@ -2,7 +2,7 @@ import { GoogleGenerativeAI } from "@google/generative-ai";
 
 const API_KEY = import.meta.env.VITE_GEMINI_API_KEY;
 
-export const getAIEmergencyResponse = async (userPrompt: string, firstAidContext: any[]) => {
+export const getAIEmergencyResponse = async (userPrompt: string, firstAidContext: unknown[]) => {
   if (!API_KEY) return "API Key missing.";
 
   const genAI = new GoogleGenerativeAI(API_KEY);
@@ -16,8 +16,9 @@ export const getAIEmergencyResponse = async (userPrompt: string, firstAidContext
   try {
     const result = await model.generateContent([systemPrompt, userPrompt]);
     return result.response.text();
-  } catch (error: any) {
-    if (error.message?.includes("429")) {
+  } catch (error: unknown) {
+    const err = error as Error & { message?: string };
+    if (err.message?.includes("429")) {
       return "The AI is currently busy. Please retry in a few seconds or use the manual guides below.";
     }
     return "Connection error. Please call 100/101.";

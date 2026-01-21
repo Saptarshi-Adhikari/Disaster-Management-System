@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { db, auth } from "@/firebase/firebase";
 import { doc, getDoc, setDoc, updateDoc, arrayUnion, arrayRemove } from "firebase/firestore";
-import { onAuthStateChanged } from "firebase/auth";
+import { onAuthStateChanged, User as FirebaseUser } from "firebase/auth";
 import Cropper from "react-easy-crop"; // New library for crop
 import { 
   User as UserIcon, 
@@ -23,11 +23,34 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 
+interface EmergencyContact {
+  id: string;
+  name: string;
+  phone: string;
+  relation: string;
+}
+
+interface UserProfile {
+  uid?: string;
+  email?: string;
+  displayName?: string;
+  photoURL?: string;
+  emergencyContacts?: EmergencyContact[];
+  [key: string]: unknown;
+}
+
+interface CroppedAreaPixels {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+}
+
 export default function Profile() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [newContact, setNewContact] = useState({ name: "", phone: "", relation: "" });
   const [displayName, setDisplayName] = useState("");
 
@@ -35,7 +58,7 @@ export default function Profile() {
   const [imageToCrop, setImageToCrop] = useState<string | null>(null);
   const [crop, setCrop] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
-  const [croppedAreaPixels, setCroppedAreaPixels] = useState(null);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<CroppedAreaPixels | null>(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -46,19 +69,19 @@ export default function Profile() {
       }
     });
 
-    const fetchProfile = async (currentUser: any) => {
+    const fetchProfile = async (currentUser: FirebaseUser) => {
       try {
         const docRef = doc(db, "users", currentUser.uid);
         const docSnap = await getDoc(docRef);
 
         if (docSnap.exists()) {
-          const data = docSnap.data();
+          const data = docSnap.data() as UserProfile;
           setUserProfile(data);
           setDisplayName(data.displayName || "");
         } else {
-          const initialData = {
+          const initialData: UserProfile = {
             uid: currentUser.uid,
-            email: currentUser.email,
+            email: currentUser.email || "",
             displayName: currentUser.displayName || "User",
             photoURL: "",
             emergencyContacts: []
@@ -78,7 +101,7 @@ export default function Profile() {
   }, []);
 
   // --- NEW: Cropping Logic ---
-  const onCropComplete = useCallback((_croppedArea: any, croppedAreaPixels: any) => {
+  const onCropComplete = useCallback((_croppedArea: CroppedAreaPixels, croppedAreaPixels: CroppedAreaPixels) => {
     setCroppedAreaPixels(croppedAreaPixels);
   }, []);
 
@@ -102,7 +125,7 @@ export default function Profile() {
       const canvas = document.createElement("canvas");
       const ctx = canvas.getContext("2d");
 
-      const { width, height, x, y } = croppedAreaPixels as any;
+      const { width, height, x, y } = croppedAreaPixels as CroppedAreaPixels;
       canvas.width = 300; // Standard profile size
       canvas.height = 300;
 
@@ -113,7 +136,7 @@ export default function Profile() {
       const userRef = doc(db, "users", auth.currentUser.uid);
       await updateDoc(userRef, { photoURL: base64String });
 
-      setUserProfile((prev: any) => ({ ...prev, photoURL: base64String }));
+      setUserProfile((prev: UserProfile | null) => (prev ? { ...prev, photoURL: base64String } : null));
       setImageToCrop(null); // Close the cropper
       toast({ title: "Success", description: "Profile picture updated!" });
     } catch (e) {
@@ -128,7 +151,7 @@ export default function Profile() {
     try {
       const userRef = doc(db, "users", auth.currentUser.uid);
       await updateDoc(userRef, { photoURL: "" });
-      setUserProfile((prev: any) => ({ ...prev, photoURL: "" }));
+      setUserProfile((prev: UserProfile | null) => (prev ? { ...prev, photoURL: "" } : null));
       toast({ title: "Photo Removed", description: "Your profile picture has been deleted." });
     } catch (e) {
       toast({ title: "Error", variant: "destructive" });
@@ -140,7 +163,7 @@ export default function Profile() {
     try {
       const userRef = doc(db, "users", auth.currentUser.uid);
       await updateDoc(userRef, { displayName: displayName });
-      setUserProfile((prev: any) => ({ ...prev, displayName: displayName }));
+      setUserProfile((prev: UserProfile | null) => (prev ? { ...prev, displayName: displayName } : null));
       toast({ title: "Name Updated", description: "Your name has been synced to your profile." });
     } catch (e) {
       toast({ title: "Update Failed", variant: "destructive" });
@@ -155,9 +178,9 @@ export default function Profile() {
     try {
       const userRef = doc(db, "users", auth.currentUser.uid);
       const contactId = Date.now().toString();
-      const contactData = { id: contactId, ...newContact };
+      const contactData: EmergencyContact = { id: contactId, ...newContact };
       await updateDoc(userRef, { emergencyContacts: arrayUnion(contactData) });
-      setUserProfile((prev: any) => ({ ...prev, emergencyContacts: [...prev.emergencyContacts, contactData] }));
+      setUserProfile((prev: UserProfile | null) => (prev ? { ...prev, emergencyContacts: [...(prev.emergencyContacts || []), contactData] } : null));
       setNewContact({ name: "", phone: "", relation: "" });
       toast({ title: "Contact Added" });
     } catch (e) {
@@ -165,12 +188,12 @@ export default function Profile() {
     }
   };
 
-  const removeContact = async (contact: any) => {
+  const removeContact = async (contact: EmergencyContact) => {
     if (!auth.currentUser) return;
     try {
       const userRef = doc(db, "users", auth.currentUser.uid);
       await updateDoc(userRef, { emergencyContacts: arrayRemove(contact) });
-      setUserProfile((prev: any) => ({ ...prev, emergencyContacts: prev.emergencyContacts.filter((c: any) => c.id !== contact.id) }));
+      setUserProfile((prev: UserProfile | null) => (prev ? { ...prev, emergencyContacts: prev.emergencyContacts?.filter((c: EmergencyContact) => c.id !== contact.id) } : null));
       toast({ title: "Contact Removed" });
     } catch (e) {
       toast({ title: "Error", variant: "destructive" });
@@ -304,7 +327,7 @@ export default function Profile() {
           {userProfile?.emergencyContacts.length === 0 ? (
             <div className="p-8 text-center border border-dashed border-slate-800 rounded-xl text-slate-500">No contacts synced yet.</div>
           ) : (
-            userProfile?.emergencyContacts.map((contact: any) => (
+            userProfile?.emergencyContacts.map((contact: EmergencyContact) => (
               <Card key={contact.id} className="bg-slate-900/50 border-slate-800 hover:border-slate-700 transition-colors">
                 <CardContent className="p-4 flex items-center justify-between">
                   <div className="flex items-center gap-3">

@@ -45,7 +45,7 @@ export default function Dashboard() {
     return R * c; 
   };
 
-  const fetchAqiData = async (lat: number, lng: number) => {
+  const fetchAqiData = useCallback(async (lat: number, lng: number) => {
     const TOKEN = "16cb2690d129561db238c7bf06a5719124f575a3"; 
     try {
       const response = await fetch(`https://api.waqi.info/feed/geo:${lat};${lng}/?token=${TOKEN}`);
@@ -60,9 +60,9 @@ export default function Dashboard() {
         setTemp(result.data.iaqi?.t?.v);
       }
     } catch (e) { console.error(e); }
-  };
+  }, []);
 
-  const handleEnableLocation = () => {
+  const handleEnableLocation = useCallback(() => {
     if (!navigator.geolocation) {
       alert("GPS not supported on this device.");
       return;
@@ -85,21 +85,21 @@ export default function Dashboard() {
       },
       { enableHighAccuracy: true, timeout: 10000 }
     );
-  };
+  }, [fetchAqiData]);
 
   const requestLocation = useCallback(() => {
     handleEnableLocation();
-  }, []);
+  }, [handleEnableLocation]);
 
   useEffect(() => {
     requestLocation();
     const unsubShelters = onSnapshot(query(collection(db, "shelters"), where("status_approval", "==", "approved")), (snap) => {
-      setShelters(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as any);
+      setShelters(snap.docs.map(doc => ({ id: doc.id, ...doc.data() })) as unknown as typeof shelters);
     });
     const unsubResources = onSnapshot(collection(db, "resources"), (snap) => setResourceCount(snap.size));
     const loadAlerts = async () => {
       const liveData = await fetchWestBengalNews("");
-      setAlerts(liveData.slice(0, 5) as any);
+      setAlerts(liveData.slice(0, 5) as unknown as typeof alerts);
       setIsLoading(false);
     };
     loadAlerts();

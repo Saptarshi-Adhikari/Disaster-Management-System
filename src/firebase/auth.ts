@@ -6,17 +6,29 @@ import {
   sendPasswordResetEmail,
   signOut,
   updateProfile,
+  User as FirebaseUser,
 } from "firebase/auth";
 import { doc, setDoc, getDoc } from "firebase/firestore";
 import { auth, db } from "./firebase";
 
+// Extend window interface to include recaptchaVerifier
+declare global {
+  interface Window {
+    recaptchaVerifier?: RecaptchaVerifier | null;
+  }
+}
+
 // --- HELPERS ---
 const setupRecaptcha = (containerId: string) => {
-  if ((window as any).recaptchaVerifier) {
-    try { (window as any).recaptchaVerifier.clear(); } catch (e) {}
-    (window as any).recaptchaVerifier = null;
+  if (window.recaptchaVerifier) {
+    try { 
+      window.recaptchaVerifier.clear(); 
+    } catch (e) {
+      console.error("Error clearing recaptcha:", e);
+    }
+    window.recaptchaVerifier = null;
   }
-  (window as any).recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
+  window.recaptchaVerifier = new RecaptchaVerifier(auth, containerId, {
     size: "invisible",
   });
 };
@@ -26,8 +38,8 @@ const setupRecaptcha = (containerId: string) => {
 export const loginWithPhone = async (phoneNumber: string, containerId: string) => {
   const finalPhone = phoneNumber.startsWith("+") ? phoneNumber : `+91${phoneNumber}`;
   setupRecaptcha(containerId);
-  const appVerifier = (window as any).recaptchaVerifier;
-  return await signInWithPhoneNumber(auth, finalPhone, appVerifier);
+  const appVerifier = window.recaptchaVerifier;
+  return await signInWithPhoneNumber(auth, finalPhone, appVerifier as RecaptchaVerifier);
 };
 
 export const sendOTP = loginWithPhone;
@@ -53,7 +65,7 @@ export const resetPassword = (email: string) => {
   return sendPasswordResetEmail(auth, email, actionCodeSettings);
 };
 
-export const syncUserProfile = async (user: any, name: string) => {
+export const syncUserProfile = async (user: FirebaseUser, name: string) => {
   await updateProfile(user, { displayName: name });
   await setDoc(doc(db, "users", user.uid), {
     name,

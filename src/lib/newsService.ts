@@ -1,5 +1,18 @@
 // src/lib/newsService.ts
 
+interface NewsItem {
+  title?: string;
+  description?: string;
+  link?: string;
+  pubDate?: string;
+  [key: string]: unknown;
+}
+
+interface RSSResponse {
+  items?: NewsItem[];
+  [key: string]: unknown;
+}
+
 export const fetchWestBengalNews = async (city: string = "") => {
   try {
     const query = city && city !== "All West Bengal" 
@@ -13,7 +26,7 @@ export const fetchWestBengalNews = async (city: string = "") => {
     );
     
     if (!response.ok) throw new Error('Failed to fetch RSS data');
-    const data = await response.json();
+    const data = await response.json() as RSSResponse;
 
     // Improved HTML cleaner to remove link tags and extra whitespace
     const cleanHTML = (html: string) => {
@@ -22,7 +35,7 @@ export const fetchWestBengalNews = async (city: string = "") => {
       return text.replace(/<[^>]*>?/gm, '').trim(); 
     };
     
-    return (data.items || []).map((item: any) => {
+    return (data.items || []).map((item: NewsItem) => {
       const title = item.title || "";
       // Get the first sentence or first 120 chars of the cleaned description
       const fullDetails = cleanHTML(item.description || "");

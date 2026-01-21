@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { db } from "@/firebase/firebase";
 import { collection, query, where, onSnapshot, addDoc } from "firebase/firestore";
 import { LiveMap } from "@/components/live-map";
@@ -9,6 +9,9 @@ import {
   Loader2,
   Navigation,
   Phone,
+  Camera,
+  CheckCircle,
+  X
 } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
@@ -25,6 +28,24 @@ import {
 } from "@/components/ui/dialog";
 import { cn } from "@/lib/utils";
 import { useToast } from "@/hooks/use-toast";
+
+// NEW: Metadata Parser Import
+import exifr from 'exifr';
+
+/* ---------- TYPES ---------- */
+interface Shelter {
+  id: string;
+  name?: string;
+  address?: string;
+  coords?: { lat: number; lng: number };
+  capacity?: number;
+  current?: number;
+  status?: 'open' | 'limited' | 'full';
+  phone?: string;
+  image?: string;
+  status_approval?: string;
+  [key: string]: unknown;
+}
 
 /* ---------- CONFIG ---------- */
 
@@ -47,15 +68,19 @@ export default function Shelters() {
   const { toast } = useToast();
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedShelter, setSelectedShelter] = useState<string | null>(null);
-  const [shelters, setShelters] = useState<any[]>([]);
+  const [shelters, setShelters] = useState<Shelter[]>([]);
   const [loading, setLoading] = useState(true);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isDialogOpen, setIsDialogOpen] = useState(false);
   
-  // States for Address Validation
+  // States for Address/Photo Validation
   const [tempCoords, setTempCoords] = useState<{ lat: number; lng: number } | null>(null);
   const [isValidating, setIsValidating] = useState(false);
   const [addressValue, setAddressValue] = useState("");
+  
+  // NEW: Photo Metadata States
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  const [isExtracting, setIsExtracting] = useState(false);
 
   useEffect(() => {
     const q = query(
@@ -68,7 +93,7 @@ export default function Shelters() {
         const data = snapshot.docs.map((doc) => ({
           id: doc.id,
           ...doc.data(),
-        }));
+        } as Shelter));
         setShelters(data);
         setLoading(false);
       },
@@ -80,9 +105,40 @@ export default function Shelters() {
     return () => unsubscribe();
   }, []);
 
-  // NEW: Geocoding Logic triggered on Address Blur
+  // NEW: Handle Geotagging from Photo
+  const handlePhotoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    setIsExtracting(true);
+    try {
+      const gpsData = await exifr.gps(file);
+      if (gpsData && gpsData.latitude && gpsData.longitude) {
+        setTempCoords({
+          lat: gpsData.latitude,
+          lng: gpsData.longitude
+        });
+        toast({ 
+          title: "Photo Geotag Found", 
+          description: `Coordinates extracted: ${gpsData.latitude.toFixed(4)}, ${gpsData.longitude.toFixed(4)}` 
+        });
+      } else {
+        toast({ 
+          variant: "destructive", 
+          title: "No GPS Data", 
+          description: "This photo doesn't contain location metadata. Please enter address manually." 
+        });
+      }
+    } catch (error) {
+      console.error("EXIF Error:", error);
+    } finally {
+      setIsExtracting(false);
+    }
+  };
+
+  // Address Validation Logic (Preserved)
   const handleAddressBlur = async () => {
-    if (addressValue.length < 5) return;
+    if (addressValue.length < 5 || tempCoords) return;
 
     setIsValidating(true);
     try {
@@ -117,7 +173,7 @@ export default function Shelters() {
   const handleAddShelter = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
     if (!tempCoords) {
-      toast({ variant: "destructive", title: "Wait", description: "Please enter a valid address first." });
+      toast({ variant: "destructive", title: "Wait", description: "Please provide a location via photo or address." });
       return;
     }
 
@@ -133,7 +189,7 @@ export default function Shelters() {
     try {
       await addDoc(collection(db, "shelters"), {
         name: formData.get("name"),
-        address: addressValue,
+        address: addressValue || "Location provided via photo",
         phone: phone,
         capacity: Number(formData.get("capacity")),
         current: 0,
@@ -141,6 +197,7 @@ export default function Shelters() {
         amenities: ["food", "power"],
         coords: tempCoords,
         status_approval: "pending",
+        geotagged: !!photoInputRef.current?.files?.length 
       });
       toast({ title: "Submitted", description: "Pending admin approval." });
       setTempCoords(null);
@@ -168,13 +225,44 @@ export default function Shelters() {
               <Plus className="h-4 w-4" /> Register Shelter
             </Button>
           </DialogTrigger>
-          <DialogContent className="bg-slate-900 text-white border-slate-800">
+          <DialogContent className="bg-slate-900 text-white border-slate-800 sm:max-w-[425px]">
             <DialogHeader>
               <DialogTitle>Register Emergency Shelter</DialogTitle>
             </DialogHeader>
             <form onSubmit={handleAddShelter} className="space-y-4 pt-4">
+              
+              {/* NEW: Photo Upload for Geotagging */}
+              <div className="space-y-2">
+                <Label className="text-xs text-slate-400">Step 1: Auto-locate with Photo (Optional)</Label>
+                <div 
+                  onClick={() => photoInputRef.current?.click()}
+                  className={cn(
+                    "group relative flex flex-col items-center justify-center p-4 border-2 border-dashed rounded-xl cursor-pointer transition-all",
+                    tempCoords ? "border-emerald-500/50 bg-emerald-500/5" : "border-slate-700 hover:border-slate-500 bg-slate-800/50"
+                  )}
+                >
+                  {isExtracting ? (
+                    <Loader2 className="h-6 w-6 animate-spin text-primary" />
+                  ) : tempCoords ? (
+                    <CheckCircle className="h-6 w-6 text-emerald-500" />
+                  ) : (
+                    <Camera className="h-6 w-6 text-slate-400 group-hover:text-slate-300" />
+                  )}
+                  <span className="text-[10px] mt-2 text-slate-400">
+                    {tempCoords ? "Location Verified from Image" : "Upload photo to auto-detect GPS"}
+                  </span>
+                  <input 
+                    type="file" 
+                    accept="image/*" 
+                    className="hidden" 
+                    ref={photoInputRef} 
+                    onChange={handlePhotoUpload} 
+                  />
+                </div>
+              </div>
+
               <div className="space-y-1">
-                <Label className="text-xs text-slate-400">Shelter Name *</Label>
+                <Label className="text-xs text-slate-400">Step 2: Shelter Details *</Label>
                 <Input
                   name="name"
                   placeholder="e.g. Community Hall"
@@ -182,23 +270,26 @@ export default function Shelters() {
                   className="bg-slate-800 border-slate-700 text-white"
                 />
               </div>
+
               <div className="space-y-1">
-                <Label className="text-xs text-slate-400">Full Address *</Label>
-                <Input
-                  name="address"
-                  placeholder="Street, District"
-                  required
-                  value={addressValue}
-                  onChange={(e) => {
-                    setAddressValue(e.target.value);
-                    if (tempCoords) setTempCoords(null);
-                  }}
-                  onBlur={handleAddressBlur}
-                  className="bg-slate-800 border-slate-700 text-white"
-                />
+                <Label className="text-xs text-slate-400">Full Address (if not using photo) *</Label>
+                <div className="relative">
+                  <Input
+                    name="address"
+                    placeholder="Street, District"
+                    required={!tempCoords}
+                    value={addressValue}
+                    onChange={(e) => {
+                      setAddressValue(e.target.value);
+                      if (tempCoords) setTempCoords(null);
+                    }}
+                    onBlur={handleAddressBlur}
+                    className="bg-slate-800 border-slate-700 text-white pr-10"
+                  />
+                  {isValidating && <Loader2 className="absolute right-3 top-3 h-4 w-4 animate-spin text-slate-400" />}
+                </div>
               </div>
               
-              {/* STATUS INDICATOR - UI preserved exactly as your screenshot */}
               <Button
                 type="button"
                 variant="outline"
@@ -209,14 +300,10 @@ export default function Shelters() {
                     ? "text-emerald-400 border-emerald-500/50 bg-emerald-500/5"
                     : "text-slate-400"
                 )}
-                disabled={isValidating}
+                disabled={isValidating || isExtracting}
               >
-                {isValidating ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Navigation className="h-4 w-4" />
-                )}
-                {isValidating ? "Verifying..." : tempCoords ? "Location Captured ✓" : "Enter address to pin location"}
+                <Navigation className="h-4 w-4" />
+                {tempCoords ? "Location Ready ✓" : "Enter address or upload photo"}
               </Button>
 
               <div className="grid grid-cols-2 gap-4">
@@ -242,8 +329,8 @@ export default function Shelters() {
               </div>
               <Button 
                 type="submit" 
-                className="w-full" 
-                disabled={isSubmitting || isValidating || !tempCoords}
+                className="w-full bg-primary hover:bg-primary/90" 
+                disabled={isSubmitting || isValidating || isExtracting || !tempCoords}
               >
                 {isSubmitting ? (
                   <Loader2 className="animate-spin" />

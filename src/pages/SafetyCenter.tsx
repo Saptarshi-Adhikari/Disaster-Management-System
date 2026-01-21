@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { db, auth } from "@/firebase/firebase";
 import { doc, getDoc, updateDoc, arrayUnion, arrayRemove, setDoc, serverTimestamp } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
+import { User as FirebaseUser } from "firebase/auth";
 import { 
   AlertTriangle, CheckCircle, ShieldCheck, Phone, Heart, 
   Users, Plus, Trash2, Video, Mic, MapPin, Send, Loader2, StopCircle, Upload, X 
@@ -13,10 +14,27 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { useToast } from "@/hooks/use-toast";
 
+// NEW: Metadata Parser Import
+import exifr from 'exifr';
+
+interface EmergencyContact {
+  id: string;
+  name: string;
+  phone: string;
+  relation: string;
+}
+
+interface UserProfile {
+  uid?: string;
+  email?: string;
+  emergencyContacts?: EmergencyContact[];
+  [key: string]: unknown;
+}
+
 export default function SafetyCenter() {
   const { toast } = useToast();
   const [loading, setLoading] = useState(true);
-  const [userProfile, setUserProfile] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
   const [newContact, setNewContact] = useState({ name: "", phone: "", relation: "" });
 
   // Functional States
@@ -48,11 +66,11 @@ export default function SafetyCenter() {
       }
     });
 
-    const fetchProfile = async (user: any) => {
+    const fetchProfile = async (user: FirebaseUser) => {
       try {
         const docSnap = await getDoc(doc(db, "users", user.uid));
         if (docSnap.exists()) {
-          setUserProfile(docSnap.data());
+          setUserProfile(docSnap.data() as UserProfile);
         }
       } catch (error) {
         console.error("Error fetching profile:", error);
@@ -127,7 +145,7 @@ export default function SafetyCenter() {
     }
   };
 
-  // --- 3. FUNCTION: MEDIA RECORDING (WITH PERMISSIONS & PREVIEW) ---
+  // --- 3. FUNCTION: MEDIA RECORDING ---
   const startRecording = async (type: 'video' | 'audio') => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({
@@ -170,14 +188,31 @@ export default function SafetyCenter() {
     }
   };
 
-  // --- 4. FUNCTION: FILE UPLOAD ---
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // --- 4. UPDATED FUNCTION: FILE UPLOAD WITH GEOTAG EXTRACTION ---
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (file) {
       const url = URL.createObjectURL(file);
       setAttachedFile(file);
       setPreviewUrl(url);
       toast({ title: "File Selected", description: `${file.name} is attached.` });
+
+      // NEW: Extract GPS Metadata from File
+      try {
+        const gpsData = await exifr.gps(file);
+        if (gpsData && gpsData.latitude && gpsData.longitude) {
+          setSosDetails(prev => ({
+            ...prev,
+            location: { lat: gpsData.latitude, lng: gpsData.longitude }
+          }));
+          toast({ 
+            title: "Geotag Detected", 
+            description: "Location auto-filled from photo/video metadata.",
+          });
+        }
+      } catch (error) {
+        console.log("No GPS metadata found in file.");
+      }
     }
   };
 
@@ -216,7 +251,7 @@ export default function SafetyCenter() {
     }
   };
 
-  // --- PREVIOUS CONTACT FUNCTIONS ---
+  // --- CONTACT FUNCTIONS ---
   const handleAddContact = async () => {
     if (!newContact.name || !newContact.phone || !auth.currentUser) {
       toast({ title: "Missing Info", variant: "destructive" });
@@ -224,12 +259,12 @@ export default function SafetyCenter() {
     }
     try {
       const userRef = doc(db, "users", auth.currentUser.uid);
-      const contactData = { id: Date.now().toString(), ...newContact };
+      const contactData: EmergencyContact = { id: Date.now().toString(), ...newContact };
       await updateDoc(userRef, { emergencyContacts: arrayUnion(contactData) });
-      setUserProfile((prev: any) => ({
+      setUserProfile((prev: UserProfile | null) => ({
         ...prev,
-        emergencyContacts: [...(prev.emergencyContacts || []), contactData]
-      }));
+        emergencyContacts: [...(prev?.emergencyContacts || []), contactData]
+      } as UserProfile));
       setNewContact({ name: "", phone: "", relation: "" });
       toast({ title: "Contact Added" });
     } catch (e) {
@@ -237,15 +272,15 @@ export default function SafetyCenter() {
     }
   };
 
-  const handleRemoveContact = async (contact: any) => {
+  const handleRemoveContact = async (contact: EmergencyContact) => {
     if (!auth.currentUser) return;
     try {
       const userRef = doc(db, "users", auth.currentUser.uid);
       await updateDoc(userRef, { emergencyContacts: arrayRemove(contact) });
-      setUserProfile((prev: any) => ({
+      setUserProfile((prev: UserProfile | null) => ({
         ...prev,
-        emergencyContacts: prev.emergencyContacts.filter((c: any) => c.id !== contact.id)
-      }));
+        emergencyContacts: prev?.emergencyContacts?.filter((c: EmergencyContact) => c.id !== contact.id)
+      } as UserProfile));
       toast({ title: "Contact Removed" });
     } catch (e) {
       toast({ title: "Error", variant: "destructive" });
@@ -396,7 +431,7 @@ export default function SafetyCenter() {
               </div>
               <div className="pt-4 space-y-3 border-t border-slate-800">
                 {userProfile?.emergencyContacts?.length > 0 ? (
-                  userProfile.emergencyContacts.map((c: any) => (
+                  userProfile.emergencyContacts.map((c: EmergencyContact) => (
                     <div key={c.id} className="flex items-center justify-between p-3 bg-slate-800/50 rounded-lg border border-slate-700 group">
                       <div className="flex items-center gap-3">
                         <Heart className="h-4 w-4 text-rose-500 fill-rose-500" />

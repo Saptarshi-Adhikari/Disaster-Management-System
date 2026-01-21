@@ -44,7 +44,7 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { Label } from "@/components/ui/label"; // Added for better form labeling
+import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -61,7 +61,7 @@ interface Resource {
   location: string;
   postedBy: string;
   contact: string;
-  postedAt: any;
+  postedAt: Date | number;
   status: ResourceStatus;
   urgent?: boolean;
 }
@@ -95,6 +95,7 @@ export default function Resources() {
   }, []);
 
   useEffect(() => {
+    // We only show approved resources to the public
     const q = query(
       collection(db, "resources"),
       where("status_approval", "==", "approved")
@@ -124,32 +125,32 @@ export default function Resources() {
     }
 
     if (!form.title || !form.category) {
-      toast({ title: "Missing Fields", variant: "destructive" });
+      toast({ title: "Missing Fields", description: "Please fill in the title and category.", variant: "destructive" });
       return;
     }
 
     try {
       await addDoc(collection(db, "resources"), {
         ...form,
-        postedBy: "Community Member",
+        postedBy: currentUser?.displayName || "Community Member",
         postedAt: Timestamp.now(),
         status: "available",
         status_approval: "pending",
-        quantity: form.quantity || "0",
+        quantity: form.quantity || "1",
       });
 
       setForm({ type: "offer", category: "", title: "", description: "", location: "", quantity: "", contact: "" });
       setOpen(false);
       toast({ title: "Submitted", description: "Listing will appear after admin verification." });
     } catch (e) {
-      toast({ title: "Error", variant: "destructive" });
+      toast({ title: "Error", description: "Failed to post resource.", variant: "destructive" });
     }
   };
 
   const updateStatus = async (id: string, status: ResourceStatus) => {
     try {
       await updateDoc(doc(db, "resources", id), { status });
-      toast({ title: "Status Updated" });
+      toast({ title: "Status Updated", description: `Resource is now marked as ${status}.` });
     } catch (e) {
       toast({ title: "Error updating status", variant: "destructive" });
     }
@@ -167,7 +168,10 @@ export default function Resources() {
 
   const filtered = resources.filter((r) => {
     const tabOk = tab === "all" || r.type === tab;
-    const searchOk = r.title.toLowerCase().includes(search.toLowerCase()) || r.description.toLowerCase().includes(search.toLowerCase());
+    const searchOk = 
+      r.title.toLowerCase().includes(search.toLowerCase()) || 
+      r.description.toLowerCase().includes(search.toLowerCase()) ||
+      r.location.toLowerCase().includes(search.toLowerCase());
     const categoryOk = category === "All" || r.category === category;
     return tabOk && searchOk && categoryOk;
   });
@@ -197,8 +201,11 @@ export default function Resources() {
             <DialogHeader><DialogTitle>Post a Resource</DialogTitle></DialogHeader>
             <div className="space-y-4 pt-4">
               <Select onValueChange={(v) => setForm({ ...form, type: v as ResourceType })}>
-                <SelectTrigger className="bg-slate-800 border-slate-700"><SelectValue placeholder="Type" /></SelectTrigger>
-                <SelectContent><SelectItem value="offer">I want to donate</SelectItem><SelectItem value="request">I need help</SelectItem></SelectContent>
+                <SelectTrigger className="bg-slate-800 border-slate-700"><SelectValue placeholder="Listing Type" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="offer">I want to donate</SelectItem>
+                  <SelectItem value="request">I need help</SelectItem>
+                </SelectContent>
               </Select>
               
               <Select onValueChange={(v) => setForm({ ...form, category: v })}>
@@ -206,14 +213,13 @@ export default function Resources() {
                 <SelectContent>{categories.filter(c => c !== "All").map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
               </Select>
 
-              <Input placeholder="Title" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="bg-slate-800 border-slate-700" />
+              <Input placeholder="Title (e.g. 50 Water Bottles)" value={form.title} onChange={(e) => setForm({...form, title: e.target.value})} className="bg-slate-800 border-slate-700" />
               
               <div className="grid grid-cols-2 gap-2">
                 <Input placeholder="Location" value={form.location} onChange={(e) => setForm({...form, location: e.target.value})} className="bg-slate-800 border-slate-700" />
                 <Input placeholder="Quantity" value={form.quantity} onChange={(e) => setForm({...form, quantity: e.target.value})} className="bg-slate-800 border-slate-700" />
               </div>
 
-              {/* MANDATORY PHONE FIELD */}
               <div className="space-y-1.5">
                 <Label className="text-xs text-slate-400">Contact Phone <span className="text-rose-500">*</span></Label>
                 <Input 
@@ -225,7 +231,7 @@ export default function Resources() {
                 />
               </div>
 
-              <Textarea placeholder="Details" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="bg-slate-800 border-slate-700" />
+              <Textarea placeholder="Additional Details (Special instructions, expiration date, etc.)" value={form.description} onChange={(e) => setForm({...form, description: e.target.value})} className="bg-slate-800 border-slate-700" />
               
               <Button className="w-full bg-emerald-600 hover:bg-emerald-700" onClick={postResource}>Submit Listing</Button>
             </div>
@@ -233,64 +239,109 @@ export default function Resources() {
         </Dialog>
       </div>
 
-      <Tabs defaultValue="all" onValueChange={(v) => setTab(v as any)}>
-        {/* ... Tab structure remains the same ... */}
-        <div className="mb-6 flex flex-col gap-4 sm:flex-row">
-          <TabsList><TabsTrigger value="all">All</TabsTrigger><TabsTrigger value="offer">Offers</TabsTrigger><TabsTrigger value="request">Requests</TabsTrigger></TabsList>
-          <div className="flex flex-1 gap-3">
+      <Tabs defaultValue="all" onValueChange={(v) => setTab(v as "all" | ResourceType)}>
+        <div className="mb-6 flex flex-col gap-4 sm:flex-row items-center">
+          <TabsList className="bg-slate-800">
+            <TabsTrigger value="all">All</TabsTrigger>
+            <TabsTrigger value="offer">Offers</TabsTrigger>
+            <TabsTrigger value="request">Requests</TabsTrigger>
+          </TabsList>
+          
+          <div className="flex flex-1 gap-3 w-full">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-              <Input placeholder="Search..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
+              <Input placeholder="Search resources..." className="pl-10" value={search} onChange={(e) => setSearch(e.target.value)} />
             </div>
+            <Select onValueChange={(v) => setCategory(v)}>
+              <SelectTrigger className="w-[140px] bg-slate-800 border-slate-700"><SelectValue placeholder="Category" /></SelectTrigger>
+              <SelectContent>{categories.map(c => <SelectItem key={c} value={c}>{c}</SelectItem>)}</SelectContent>
+            </Select>
           </div>
         </div>
 
         {loading ? (
-          <div className="flex justify-center py-10"><Loader2 className="animate-spin h-8 w-8 text-emerald-500" /></div>
+          <div className="flex justify-center py-20"><Loader2 className="animate-spin h-8 w-8 text-emerald-500" /></div>
         ) : (
-          <div className="grid gap-4 md:grid-cols-2">
-            {filtered.map((r) => (
-              <Card key={r.id} className={cn("border-l-4 shadow-sm bg-card/40 backdrop-blur-sm", r.urgent ? "border-l-rose-500" : "border-l-emerald-500")}>
-                <CardContent className="p-5">
-                  <div className="mb-3 flex justify-between">
-                    <div className="flex gap-2">
-                      <Badge className="capitalize">{r.type}</Badge>
-                      <Badge variant="outline">{r.category}</Badge>
-                    </div>
-                    {r.status === "matched" && <Badge className="bg-emerald-500"><Check className="mr-1 h-3 w-3" />Matched</Badge>}
-                  </div>
-                  <h3 className="text-lg font-bold">{r.title}</h3>
-                  <p className="my-3 text-sm text-muted-foreground line-clamp-2 italic">"{r.description}"</p>
-                  
-                  <div className="mb-4 space-y-1.5 text-sm text-muted-foreground">
-                    <div className="flex gap-2"><MapPin className="h-3.5 w-3.5 text-primary" />{r.location}</div>
-                    <div className="flex gap-2 font-medium"><Badge variant="secondary" className="text-[10px] h-5">Qty: {r.quantity}</Badge></div>
-                    <div className="flex gap-2"><Phone className="h-3.5 w-3.5 text-primary" />{r.contact}</div>
-                  </div>
+          <>
+            {filtered.length === 0 ? (
+              <div className="text-center py-20 text-muted-foreground border-2 border-dashed border-slate-800 rounded-lg">
+                No resources found matching your filters.
+              </div>
+            ) : (
+              <div className="grid gap-4 md:grid-cols-2">
+                {filtered.map((r) => (
+                  <Card key={r.id} className={cn(
+                    "border-l-4 shadow-sm bg-card/40 backdrop-blur-sm transition-all hover:shadow-md", 
+                    r.type === "request" ? "border-l-rose-500" : "border-l-emerald-500"
+                  )}>
+                    <CardContent className="p-5">
+                      <div className="mb-3 flex justify-between items-start">
+                        <div className="flex flex-wrap gap-2">
+                          <Badge className={cn("capitalize", r.type === "request" ? "bg-rose-500/20 text-rose-500 hover:bg-rose-500/20" : "bg-emerald-500/20 text-emerald-500 hover:bg-emerald-500/20")}>
+                            {r.type}
+                          </Badge>
+                          <Badge variant="outline" className="border-slate-700">{r.category}</Badge>
+                        </div>
+                        {r.status === "matched" && (
+                          <Badge className="bg-emerald-600 text-white">
+                            <Check className="mr-1 h-3 w-3" />Matched
+                          </Badge>
+                        )}
+                      </div>
+                      
+                      <h3 className="text-lg font-bold leading-tight">{r.title}</h3>
+                      <p className="my-3 text-sm text-muted-foreground line-clamp-3 italic">
+                        "{r.description || "No additional details provided."}"
+                      </p>
+                      
+                      <div className="mb-4 space-y-2 text-sm text-slate-300">
+                        <div className="flex items-center gap-2">
+                          <MapPin className="h-4 w-4 text-emerald-500" />
+                          <span>{r.location || "Location not specified"}</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <div className="flex items-center justify-center bg-slate-800 rounded-md px-2 py-0.5 text-[11px] font-bold border border-slate-700">
+                            QTY: {r.quantity}
+                          </div>
+                        </div>
+                      </div>
 
-                  <div className="flex gap-2">
-                    <Button size="sm" className="flex-1" asChild>
-                      <a href={`tel:${r.contact}`}><Phone className="mr-2 h-4 w-4" />Call</a>
-                    </Button>
-                    
-                    {/* ADMIN-ONLY MARK MATCHED BUTTON */}
-                    {isAdmin && (
-                      <Button size="sm" variant="outline" onClick={() => updateStatus(r.id, r.status === "matched" ? "available" : "matched")}>
-                        {r.status === "matched" ? <RotateCcw className="h-4 w-4" /> : "Mark Matched"}
-                      </Button>
-                    )}
-                    
-                    {/* ADMIN-ONLY DELETE BUTTON */}
-                    {isAdmin && (
-                      <Button size="icon" variant="ghost" className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10" onClick={() => deleteResource(r.id)}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
-                    )}
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
+                      <div className="flex gap-2 mt-auto">
+                        <Button size="sm" className="flex-1 bg-primary hover:bg-primary/90" asChild>
+                          <a href={`tel:${r.contact}`}>
+                            <Phone className="mr-2 h-4 w-4" />
+                            Call Contact
+                          </a>
+                        </Button>
+                        
+                        {isAdmin && (
+                          <>
+                            <Button 
+                              size="sm" 
+                              variant="outline" 
+                              className="border-slate-700 hover:bg-slate-800"
+                              onClick={() => updateStatus(r.id, r.status === "matched" ? "available" : "matched")}
+                            >
+                              {r.status === "matched" ? <RotateCcw className="h-4 w-4" /> : <Check className="h-4 w-4" />}
+                            </Button>
+                            
+                            <Button 
+                              size="icon" 
+                              variant="ghost" 
+                              className="text-rose-500 hover:text-rose-600 hover:bg-rose-500/10" 
+                              onClick={() => deleteResource(r.id)}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </>
+                        )}
+                      </div>
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </Tabs>
     </div>

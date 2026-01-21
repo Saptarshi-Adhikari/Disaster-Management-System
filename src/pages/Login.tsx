@@ -25,8 +25,9 @@ export default function Login() {
       setIsLoading(true);
       await resetPassword(contact);
       setShowResetModal(true); // Show custom modal on success
-    } catch (err: any) {
-      alert(err.message || "Failed to send reset email.");
+    } catch (err: unknown) {
+      const error = err as Error;
+      alert(error.message || "Failed to send reset email.");
     } finally {
       setIsLoading(false);
     }
@@ -43,8 +44,9 @@ export default function Login() {
         await loginWithEmail(contact, password);
         navigate("/dashboard");
       }
-    } catch (err: any) {
-      alert(err.message || "Login failed.");
+    } catch (err: unknown) {
+      const error = err as Error;
+      alert(error.message || "Login failed.");
     } finally { setIsLoading(false); }
   };
 

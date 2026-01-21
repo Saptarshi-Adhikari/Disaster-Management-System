@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import { sendOTP, registerWithEmail, syncUserProfile } from "@/firebase/auth";
+import { ConfirmationResult } from "firebase/auth";
 import { ShieldCheck, Phone, Mail, Hash, User, UserPlus, Loader2, CheckCircle2, Lock } from "lucide-react";
 import { Button } from "@/components/ui/button";
 
@@ -10,7 +11,7 @@ export default function Register() {
   const [contact, setContact] = useState(""); 
   const [password, setPassword] = useState(""); // Added password
   const [otp, setOtp] = useState("");
-  const [confirmationResult, setConfirmationResult] = useState<any>(null);
+  const [confirmationResult, setConfirmationResult] = useState<ConfirmationResult | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const navigate = useNavigate();
 
@@ -26,7 +27,10 @@ export default function Register() {
         await syncUserProfile(res.user, name);
         navigate("/dashboard");
       }
-    } catch (err: any) { alert(err.message || "Error"); } finally { setIsLoading(false); }
+    } catch (err: unknown) { 
+      const error = err as Error;
+      alert(error.message || "Error"); 
+    } finally { setIsLoading(false); }
   };
 
   const handleVerifyOTP = async (e: React.FormEvent) => {
