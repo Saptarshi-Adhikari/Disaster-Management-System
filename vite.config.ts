@@ -15,3 +15,5 @@ export default defineConfig({
     },
   },
 });
+
+VITE_GEMINI_API_KEY=AIzaSyDQ55Jsz5CfZtq0c7Mzf6KPNvF9CZsvaU4
